@@ -1,0 +1,13 @@
+# Ignore build directories
+/build/
+.idea/
+cmake-build-debug
+
+# Ignore node_modules for Node.js projects
+node_modules/
+
+# Ignore macOS system files
+.DS_Store
+
+# Ignore Visual Studio Code settings
+.vscode/
