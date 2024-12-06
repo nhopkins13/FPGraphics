@@ -34,6 +34,12 @@ enum class CameraType {
     THIRDPERSON
 };
 
+struct BezierCurve {
+    glm::vec3* controlPoints = nullptr;
+    GLuint numControlPoints = 0;
+    GLuint numCurves = 0;
+    float currentPos = 0;
+} _bezierCurve;
 
 class FPEngine final : public CSCI441::OpenGLEngine {
 public:
@@ -69,6 +75,8 @@ public:
     const float MARBLE_SPEED = 0.1f;
     glm::vec3 _marbleDirections[NUM_MARBLES];
     void _renderMinimap() const;
+    void _createCurve(GLuint vao, GLuint vbo, GLsizei &numVAOPoints) const;
+    glm::vec3 _evalBezierCurve(const glm::vec3 P0, const glm::vec3 P1, const glm::vec3 P2, const glm::vec3 P3, const GLfloat T) const;
 
     void _collideMarblesWithWall();
     void _collideMarblesWithMarbles();

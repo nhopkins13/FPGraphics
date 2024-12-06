@@ -169,6 +169,7 @@ void Vehicle::setPosition(glm::vec3 &vec) {
     _position = vec;
 }
 
+
 void Vehicle::animateFall(float time) {
     // Simulate spinning during the fall
     float spinSpeed = 5.0f;  // Spin speed
