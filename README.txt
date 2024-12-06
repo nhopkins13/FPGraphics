@@ -2,7 +2,28 @@ Neely Hopkins / nhopkins@mines.edu
 GPU Killas / Guild Members
 FP / The Grey Havens
 
-A brief, high level description of what the program is / does
+SECTION A:
+W: move forward
+A: move left
+S: move backward
+D: move right
+3: third person camera
+4: arcball camera
+5: freecam
+6: first person camera
+
+SECTION B:
+
+SECTION C:
+
+SECTION D:
+Dynamic light: when the vehicle becomes too close to an object it might crash into, a spotlight will be shown on the object.
+Point light: we have lamp posts located around the track
+
+SECTION E:
+
+SECTION X:
+
 
 A usage section, explaining how to run the program, which keys perform which actions, etc.
 
