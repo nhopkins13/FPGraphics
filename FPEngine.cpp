@@ -127,6 +127,59 @@ bool FPEngine::isMovementValid(const glm::vec3& newPosition) const {
     return true; // No collision detected
 }
 
+glm::vec3 FPEngine::_evalBezierCurve(const glm::vec3 P0, const glm::vec3 P1, const glm::vec3 P2, const glm::vec3 P3, const GLfloat T) {
+    // TODO #01: solve the curve equation
+    GLfloat oneMinusT = 1.0f - T;
+    GLfloat b0 = oneMinusT * oneMinusT * oneMinusT;
+    GLfloat b1 = 3 * oneMinusT * oneMinusT * T;
+    GLfloat b2 = 3 * oneMinusT * T * T;
+    GLfloat b3 = T * T * T;
+
+    // Compute the point on the curve
+    glm::vec3 bezierPoint = b0 * P0 + b1 * P1 + b2 * P2 + b3 * P3;
+
+    return bezierPoint;
+}
+
+void FPEngine::_createCurve(GLuint vao, GLuint vbo, GLsizei &numVAOPoints) const {
+
+    int resolution;
+    std::cout << "Enter resolution for the curve (number of steps): ";
+    std::cin >> resolution;
+
+    numVAOPoints  = _bezierCurve.numCurves * (resolution + 1);
+
+    std::vector<glm::vec3> curvePoints(numVAOPoints);
+
+    for (int i = 0; i < _bezierCurve.numCurves; ++i) {
+        glm::vec3 p0 = _bezierCurve.controlPoints[i * 3 + 0];
+        glm::vec3 p1 = _bezierCurve.controlPoints[i * 3 + 1];
+        glm::vec3 p2 = _bezierCurve.controlPoints[i * 3 + 2];
+        glm::vec3 p3 = _bezierCurve.controlPoints[i * 3 + 3];
+
+        for (int j = 0; j <= resolution; ++j) {
+            float t = static_cast<float>(j) / static_cast<float>(resolution);
+            glm::vec3 point = _evalBezierCurve(p0, p1, p2, p3, t);
+
+            curvePoints[i * (resolution + 1) + j] = point;
+        }
+    }
+
+    glBindVertexArray(vao);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, curvePoints.size() * sizeof(glm::vec3), curvePoints.data(), GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+    glEnableVertexAttribArray(0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    fprintf(stdout, "[INFO]: Bézier curve read in with VAO/VBO %d/%d & %d points\n", vao, vbo, numVAOPoints);
+}
+
+
+
 void FPEngine::handleKeyEvent(GLint key, GLint action, GLint mods) {
     if (key >= 0 && key < NUM_KEYS) {
         _keys[key] = ((action == GLFW_PRESS) || (action == GLFW_REPEAT));
@@ -456,16 +509,17 @@ void FPEngine::_generateEnvironment() {
             // Place a spotlight
             glm::mat4 innerLightMatrix = glm::translate(glm::mat4(1.0f), innerPosition);
             _lamps.emplace_back(LampData{
-                .position = innerPosition,
+
                 .modelMatrixPost = innerLightMatrix,
-                .modelMatrixLight = glm::translate(innerLightMatrix, glm::vec3(0, 7, 0)) // Adjust height for light
+                .modelMatrixLight = glm::translate(innerLightMatrix, glm::vec3(0, 7, 0)),
+                .position = innerPosition
             });
 
             glm::mat4 outerLightMatrix = glm::translate(glm::mat4(1.0f), outerPosition);
             _lamps.emplace_back(LampData{
-                .position = outerPosition,
                 .modelMatrixPost = outerLightMatrix,
-                .modelMatrixLight = glm::translate(outerLightMatrix, glm::vec3(0, 7, 0)) // Adjust height for light
+                .modelMatrixLight = glm::translate(outerLightMatrix, glm::vec3(0, 7, 0)),
+                .position = outerPosition,// Adjust height for light
             });
         }
     }
