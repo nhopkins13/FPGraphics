@@ -9,7 +9,7 @@ S: move backward
 D: move right
 3: third person camera
 4: arcball camera
-5: freecam
+5: free camera
 6: first person camera
 
 SECTION B:

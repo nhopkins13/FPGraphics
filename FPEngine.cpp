@@ -141,12 +141,12 @@ void FPEngine::handleKeyEvent(GLint key, GLint action, GLint mods) {
                 break;
 
                 // Zoom In/Out with Space
-            case GLFW_KEY_SPACE:
+            case GLFW_MOD_SHIFT:
                 if (currCamera == CameraType::ARCBALL) { // Only zoom if in Arcball mode
-                    if (mods & GLFW_MOD_SHIFT) {
-                        _pArcballCam->zoomOut();
-                    } else {
+                    if (mods & GLFW_KEY_SPACE) {
                         _pArcballCam->zoomIn();
+                    } else {
+                        _pArcballCam->zoomOut();
                     }
                 }
                 break;
