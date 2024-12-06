@@ -309,6 +309,12 @@ void FPEngine::mSetupShaders() {
 
     _textureShaderAttributeLocations.vPos = _textureShaderProgram->getAttributeLocation("vPos");
     _textureShaderAttributeLocations.aTextCoords = _textureShaderProgram->getAttributeLocation("textureCoords");
+
+    _textureShaderUniformLocations.spotLightPosition = _textureShaderProgram->getUniformLocation("spotLightPosition");
+    _textureShaderUniformLocations.spotLightDirection = _textureShaderProgram->getUniformLocation("spotLightDirection");
+    _textureShaderUniformLocations.spotLightWidth = _textureShaderProgram->getUniformLocation("spotLightWidth");
+    _textureShaderUniformLocations.spotLightColor = _textureShaderProgram->getUniformLocation("spotLightColor");
+
 }
 
 void FPEngine::mSetupBuffers() {
@@ -318,6 +324,7 @@ void FPEngine::mSetupBuffers() {
     CSCI441::setVertexAttributeLocations( _lightingShaderAttributeLocations.vPos, _lightingShaderAttributeLocations.vNormal);
 
     _createGroundBuffers();
+    _createArchBuffers();
     _generateEnvironment();
 
     glGenVertexArrays(1, &_marbleVAO);
@@ -476,10 +483,12 @@ void FPEngine::mSetupScene() {
                             _lightingShaderUniformLocations.materialShininess);
 
     float initialAngle = 0.0f; // Start at the 0-degree mark of the track
+    float initialHeading = glm::radians(180.0f);
     float startingRadius = (INNER_RADIUS + OUTER_RADIUS) / 2.0f; // Midpoint of the track
     float startX = startingRadius * cos(initialAngle);
     float startZ = startingRadius * sin(initialAngle);
     _pVehicle->setPosition(glm::vec3(startX, 0.0f, startZ));
+    _pVehicle->setHeading(initialHeading);
 
     //initialize coins and marbles
     _initializeMarbleLocations();
@@ -501,6 +510,12 @@ void FPEngine::mSetupScene() {
     _pFPCam->updatePositionAndOrientation(_pVehicle->getPosition(), _pVehicle->getHeading());
 
     _pTPCam = new TPCamera(); // Distance and height
+
+    //spotlight
+    _spotLight.pos = glm::vec3(startX, 10.0f, startZ);  // Position 10 units above the starting position
+    _spotLight.dir = glm::vec3(0.0f, -1.0f, 0.0f);      // Pointing downwards
+    _spotLight.width = glm::cos(glm::radians(15.0f));   // Spotlight cone width
+    _spotLight.color = glm::vec3(1.0f, 0.0f, 0.0f);
 
 }
 
@@ -525,6 +540,12 @@ void FPEngine::_renderScene(glm::mat4 viewMtx, glm::mat4 projMtx) const {
     glBindVertexArray(_groundVAO);
     glDrawElements(GL_TRIANGLES, _numGroundPoints, GL_UNSIGNED_INT, nullptr);
     glBindVertexArray(0);
+
+    // Send spotlight information
+    glUniform3fv(_textureShaderUniformLocations.spotLightPosition, 1, glm::value_ptr(_spotLight.pos));
+    glUniform3fv(_textureShaderUniformLocations.spotLightDirection, 1, glm::value_ptr(_spotLight.dir));
+    glUniform1f(_textureShaderUniformLocations.spotLightWidth, _spotLight.width);
+    glUniform3fv(_textureShaderUniformLocations.spotLightColor, 1, glm::value_ptr(_spotLight.color));
 
     const int MAX_POINT_LIGHTS = 10;
 
@@ -576,14 +597,10 @@ void FPEngine::_renderScene(glm::mat4 viewMtx, glm::mat4 projMtx) const {
     glUniform1fv(_lightingShaderUniformLocations.pointLightQuadratics, numPointLights, pointLightQuadratics);
 
     // Set spot light uniforms
-    glm::vec3 spotLightPos(0,10,0);
-    glm::vec3 spotLightDir(0.0f, -1.0f, 0.0f);
-    glm::vec3 spotLightColor(1.0f, 0.0f, 0.0f);
-    GLint spotLightWidth = glm::cos(glm::radians(10.0f));
-    glUniform3fv(_lightingShaderUniformLocations.spotLightPosition, 1, glm::value_ptr(spotLightPos));
-    glUniform3fv(_lightingShaderUniformLocations.spotLightDirection, 1, glm::value_ptr(spotLightDir));
-    glUniform3fv(_lightingShaderUniformLocations.spotLightColor, 1, glm::value_ptr(spotLightColor));
-    glUniform1i(_lightingShaderUniformLocations.spotLightWidth, spotLightWidth);
+    glUniform3fv(_lightingShaderUniformLocations.spotLightPosition, 1, glm::value_ptr(_spotLight.pos));
+    glUniform3fv(_lightingShaderUniformLocations.spotLightDirection, 1, glm::value_ptr(_spotLight.dir));
+    glUniform3fv(_lightingShaderUniformLocations.spotLightColor, 1, glm::value_ptr(_spotLight.color));
+    glUniform1f(_lightingShaderUniformLocations.spotLightWidth, _spotLight.width);
 
     //// BEGIN DRAWING THE TREES ////
     // Draw trunks
@@ -668,6 +685,9 @@ void FPEngine::_renderScene(glm::mat4 viewMtx, glm::mat4 projMtx) const {
 
     //draw coins
     _drawCoins(viewMtx, projMtx);
+
+    //draw arch
+    _drawArch(viewMtx, projMtx);
 }
 
 void FPEngine::_updateScene() {
@@ -679,6 +699,12 @@ void FPEngine::_updateScene() {
     glm::vec3 currentPosition = _pVehicle->getPosition();
     glm::vec3 newPosition = currentPosition; // Start with the current position
     float vehicleRadius = _pVehicle->getBoundingRadius();
+
+    // Spotlight hover over the vehicle
+    _spotLight.pos = currentPosition + glm::vec3(0.0f, 10.0f, 0.0f);
+    _spotLight.dir = glm::vec3(0.0f, -1.0f, 0.0f);
+
+
     _updateActiveCamera();
 
     // Handle coin collisions
@@ -751,8 +777,8 @@ void FPEngine::_updateScene() {
             }
         }
 
-        bool isOffPlatform = glm::abs(newPosition.x) > (FALL_BOUNDARY + vehicleRadius) ||
-                             glm::abs(newPosition.z) > (FALL_BOUNDARY + vehicleRadius);
+        bool isOffPlatform = glm::abs(newPosition.x) > (FALL_BOUNDARY) ||
+                             glm::abs(newPosition.z) > (FALL_BOUNDARY);
 
         if (isOffPlatform) {
             _isFalling = true;
@@ -1082,6 +1108,8 @@ void FPEngine::mCleanupBuffers() {
 
     fprintf( stdout, "[INFO]: ...deleting models..\n" );
     delete _pVehicle;
+
+    glDeleteVertexArrays(1, &_archVAO);
 }
 
 void FPEngine::mCleanupTextures() {
@@ -1094,6 +1122,97 @@ void FPEngine::mCleanupTextures() {
 //*************************************************************************************
 //
 // Private Helper Functions
+
+void FPEngine::_drawArch(glm::mat4 viewMtx, glm::mat4 projMtx) const {
+    _lightingShaderProgram->useProgram();
+
+glm::mat4 modelMatrix = glm::mat4(1.0f);
+    modelMatrix = glm::translate(modelMatrix, glm::vec3(25.0f, 0.0f, 0.0f)); // Position on one side
+
+    glm::mat4 mvpMatrix = projMtx * viewMtx * modelMatrix;
+
+    glUniformMatrix4fv(_lightingShaderUniformLocations.mvpMatrix, 1, GL_FALSE, glm::value_ptr(mvpMatrix));
+
+    // Material properties for the arch
+    glm::vec3 archColor(0.0f, 0.0f, 1.0f);
+    glUniform3fv(_lightingShaderUniformLocations.materialAmbient, 1, glm::value_ptr(archColor * 0.3f));
+    glUniform3fv(_lightingShaderUniformLocations.materialDiffuse, 1, glm::value_ptr(archColor));
+    glUniform3fv(_lightingShaderUniformLocations.materialSpecular, 1, glm::value_ptr(glm::vec3(0.2f)));
+    glUniform1f(_lightingShaderUniformLocations.materialShininess, 32.0f);
+
+    glBindVertexArray(_archVAO);
+    glDrawElements(GL_TRIANGLES, _numArchPoints, GL_UNSIGNED_INT, nullptr);
+    glBindVertexArray(0);
+}
+
+
+void FPEngine::_createArchBuffers() {
+    const int NUM_SEGMENTS = 100;   // Increase for smoother arch
+    const float MAX_HEIGHT = 10.0f; // Maximum height of the arch
+    const float START_ANGLE = M_PI; // Starting angle (180 degrees)
+    const float END_ANGLE = 2.0f * M_PI; // Ending angle (360 degrees)
+    const float INNER_RADIUS = 13.0f;          // Starting radius
+    const float OUTER_RADIUS = 15.0f;
+    std::vector<GLfloat> vertices;
+    std::vector<GLuint> indices;
+
+    // Generate vertices for the arch
+    for (int i = 0; i <= NUM_SEGMENTS; ++i) {
+        float t = static_cast<float>(i) / NUM_SEGMENTS;
+        float angle = START_ANGLE + t * (END_ANGLE - START_ANGLE);
+
+        // Height follows a parabolic curve
+        float height = MAX_HEIGHT * (1.0f - pow(2.0f * t - 1.0f, 2.0f));
+
+        // Inner point of the arch
+        float xInner = INNER_RADIUS * cos(angle);
+        float zInner = INNER_RADIUS * sin(angle);
+        vertices.push_back(xInner);
+        vertices.push_back(height);
+        vertices.push_back(zInner);
+
+        // Outer point of the arch
+        float xOuter = OUTER_RADIUS * cos(angle);
+        float zOuter = OUTER_RADIUS * sin(angle);
+        vertices.push_back(xOuter);
+        vertices.push_back(height);
+        vertices.push_back(zOuter);
+
+        if (i < NUM_SEGMENTS) {
+            int baseIndex = i * 2;
+            // Create triangles
+            indices.push_back(baseIndex);
+            indices.push_back(baseIndex + 1);
+            indices.push_back(baseIndex + 2);
+
+            indices.push_back(baseIndex + 1);
+            indices.push_back(baseIndex + 3);
+            indices.push_back(baseIndex + 2);
+        }
+    }
+
+    // Create VAO and VBO for the arch
+    GLuint archVBO, archEBO;
+    glGenVertexArrays(1, &_archVAO);
+    glBindVertexArray(_archVAO);
+
+    glGenBuffers(1, &archVBO);
+    glBindBuffer(GL_ARRAY_BUFFER, archVBO);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(GLfloat), vertices.data(), GL_STATIC_DRAW);
+
+    glGenBuffers(1, &archEBO);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, archEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(GLuint), indices.data(), GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(0); // Vertex positions
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void*)0);
+
+    glBindVertexArray(0);
+
+    _numArchPoints = static_cast<GLuint>(indices.size());
+}
+
+
 
 void FPEngine::_initializeCoins() {
     const int NUM_COINS = 10; // Number of coins to spawn

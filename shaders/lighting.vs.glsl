@@ -104,12 +104,12 @@ void main() {
 
         if( dot(lightDir, normalize(-spotLightDirection)) > spotLightWidth ){
             float dist = length(spotLightPosition - worldPos);
-            float attenuation = 1.0 / (1.0 + (linear * dist) + (quadratic * (dist * dist)));
+            float attenuation = 1.0;
 
             vec3 ambient = material.ambient * spotLightColor * attenuation;
             vec3 diffuse = material.diffuse * diff * spotLightColor * attenuation;
             vec3 specular = material.specular * spec * spotLightColor * attenuation;
-            vertexColor += ambient + diffuse + specular;
+            vertexColor += 2.0*(ambient + diffuse + specular);
         }
     }
     //marbles

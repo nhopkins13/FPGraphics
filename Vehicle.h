@@ -34,6 +34,7 @@ public:
     }
     void toggleVisibility() { _isVisible = !_isVisible; }
     bool isVisible() const { return _isVisible; }
+    const glm::vec3 STARTING_POSITION = glm::vec3(0, 0, 0);
 
 private:
     bool _isVisible = true;

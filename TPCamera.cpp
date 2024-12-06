@@ -1,7 +1,7 @@
 #include "TPCamera.h"
 
 TPCamera::TPCamera() {
-    _distance = 10.0f;
+    _distance = 13.0f;
     _heightOffset = 5.0f;
 }
 

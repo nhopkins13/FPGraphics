@@ -133,6 +133,10 @@ private:
     GLuint _groundVAO;
     GLsizei _numGroundPoints;
 
+    //arch
+    GLuint _archVAO;
+    GLsizei _numArchPoints;
+
     //***************************************************************************
     // Shader Program Information
 
@@ -159,6 +163,10 @@ private:
         GLint mvpMatrix;
         GLint aTextMap;
         GLint colorTint;
+        GLint spotLightPosition;
+        GLint spotLightDirection;
+        GLint spotLightWidth;
+        GLint spotLightColor;
     } _textureShaderUniformLocations;
     /// \desc stores the locations of all of our shader attributes
     struct TextureShaderAttributeLocations {
@@ -235,6 +243,8 @@ private:
 
 
     // Helper Functions
+    void _drawArch(glm::mat4 viewMtx, glm::mat4 projMtx) const;
+    void _createArchBuffers();
     void _createGroundBuffers();
     void _generateEnvironment();
     void _computeAndSendMatrixUniforms(glm::mat4 modelMtx, glm::mat4 viewMtx, glm::mat4 projMtx) const;
