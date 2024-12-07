@@ -265,15 +265,4 @@ private:
     void _createArchBuffers();
     void _createGroundBuffers();
     void _generateEnvironment();
-    void _computeAndSendMatrixUniforms(glm::mat4 modelMtx, glm::mat4 viewMtx, glm::mat4 projMtx) const;
-    void generateTorusMesh(std::vector<GLfloat>& vertices, std::vector<GLuint>& indices, float innerRadius, float outerRadius, int numSides, int numRings);
-
-
-    // Zoom Handling
-    bool _shiftPressed = false;    // Tracks if Shift is pressed
-    bool _zooming = false;         // Tracks if currently zooming
-    float _zoomSensitivity = 0.05f; // Adjust as needed
-
-};
-
-#endif // MP_ENGINE_H
+    void _computeAndSendMatrixUniforms(glm::mat4 modelMtx, glm::mat4 viewMtx, glm::m

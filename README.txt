@@ -1,5 +1,5 @@
 Neely Hopkins / nhopkins@mines.edu
-GPU Killas / Guild Members
+GPU Killas / Neely Hopkins, Gray St. Amant, Christine Hwang
 FP / The Grey Havens
 
 SECTION A:
@@ -14,8 +14,11 @@ D: move right
 SPACE: jump
 
 SECTION B:
+Vehicle moves along bezier curve when it jumps.
 
 SECTION C:
+The ground is textured.
+The coins are a particle system, which also implements a texture.
 
 SECTION D:
 Dynamic light: when the vehicle becomes too close to an object it might crash into, a spotlight will be shown on the object.
@@ -24,7 +27,9 @@ Point light: we have lamp posts located around the track
 SECTION E:
 
 SECTION X:
-
+In the center of the starting platform, you will notice a bunch of trees enclosing the middle of the disk shape.
+Normally, collision detection prevents one from entering this center. However, if you keep colliding with the trees for
+6 seconds straight, then you will be able to pass through and collect even more coins.
 
 A usage section, explaining how to run the program, which keys perform which actions, etc.
 
@@ -34,7 +39,9 @@ Notes about bugs, implementation details, etc. if necessary
 
 NEW: A description of the file format that your program reads as input
 
-NEW: A rough distribution of responsibilities / contributions of each student
+Neely Hopkins:
+Gray St. Amant:
+Christine Hwang:
 
 How long did this assignment take you?
 
