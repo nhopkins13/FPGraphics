@@ -39,10 +39,13 @@ struct BezierCurve {
     GLuint numControlPoints = 0;
     GLuint numCurves = 0;
     float currentPos = 0;
-} _bezierCurve;
+};
+
+extern BezierCurve _bezierCurve;
 
 class FPEngine final : public CSCI441::OpenGLEngine {
 public:
+    BezierCurve _bezierCurve;
     static constexpr GLfloat WORLD_SIZE = 300.0f;
     FPEngine();
     ~FPEngine() final;
@@ -62,6 +65,13 @@ public:
 
     bool _isFalling = false;
     float _fallTime = 0.0f;
+    bool _isJumping = false;       // Track if the vehicle is currently jumping
+    float _jumpProgress = 0.0f;// Progress along the Bezier curve (0 to 1)
+    GLuint _curveVAO, _curveVBO;
+    GLsizei _numCurvePoints;
+    glm::vec3 _jumpStartPosition;  // Starting position of the jump
+    glm::vec3 _jumpControlPoints[4]; // Control points for the Bezier curve
+
 
     std::vector<Marble> *_enemies; // List of all enemies
     float _enemySpawnInterval = 10.0f; // Time between enemy spawns

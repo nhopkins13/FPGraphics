@@ -127,7 +127,7 @@ bool FPEngine::isMovementValid(const glm::vec3& newPosition) const {
     return true; // No collision detected
 }
 
-glm::vec3 FPEngine::_evalBezierCurve(const glm::vec3 P0, const glm::vec3 P1, const glm::vec3 P2, const glm::vec3 P3, const GLfloat T) {
+glm::vec3 FPEngine::_evalBezierCurve(const glm::vec3 P0, const glm::vec3 P1, const glm::vec3 P2, const glm::vec3 P3, const GLfloat T) const{
     // TODO #01: solve the curve equation
     GLfloat oneMinusT = 1.0f - T;
     GLfloat b0 = oneMinusT * oneMinusT * oneMinusT;
@@ -142,13 +142,9 @@ glm::vec3 FPEngine::_evalBezierCurve(const glm::vec3 P0, const glm::vec3 P1, con
 }
 
 void FPEngine::_createCurve(GLuint vao, GLuint vbo, GLsizei &numVAOPoints) const {
-
-    int resolution;
-    std::cout << "Enter resolution for the curve (number of steps): ";
-    std::cin >> resolution;
+    int resolution = 3; // Hardcode resolution to 3
 
     numVAOPoints  = _bezierCurve.numCurves * (resolution + 1);
-
     std::vector<glm::vec3> curvePoints(numVAOPoints);
 
     for (int i = 0; i < _bezierCurve.numCurves; ++i) {
@@ -160,7 +156,6 @@ void FPEngine::_createCurve(GLuint vao, GLuint vbo, GLsizei &numVAOPoints) const
         for (int j = 0; j <= resolution; ++j) {
             float t = static_cast<float>(j) / static_cast<float>(resolution);
             glm::vec3 point = _evalBezierCurve(p0, p1, p2, p3, t);
-
             curvePoints[i * (resolution + 1) + j] = point;
         }
     }
@@ -175,10 +170,8 @@ void FPEngine::_createCurve(GLuint vao, GLuint vbo, GLsizei &numVAOPoints) const
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 
-    fprintf(stdout, "[INFO]: Bézier curve read in with VAO/VBO %d/%d & %d points\n", vao, vbo, numVAOPoints);
+    fprintf(stdout, "[INFO]: Bézier curve created with fixed resolution 3\n");
 }
-
-
 
 void FPEngine::handleKeyEvent(GLint key, GLint action, GLint mods) {
     if (key >= 0 && key < NUM_KEYS) {
@@ -203,6 +196,25 @@ void FPEngine::handleKeyEvent(GLint key, GLint action, GLint mods) {
                     }
                 }
                 break;
+            case GLFW_KEY_SPACE:
+                if (!_isJumping) {
+                    _isJumping = true;
+                    _jumpProgress = 0.0f;
+
+                    // Set control points for the jump
+                    _jumpStartPosition = _pVehicle->getPosition();
+                    // Vehicle heading vector
+                    glm::vec3 headingVector = glm::vec3(sin(_pVehicle->getHeading()), 0.0f, cos(_pVehicle->getHeading()));
+
+                    // Control points for the jump in the heading direction
+                    _jumpControlPoints[0] = _jumpStartPosition;
+                    _jumpControlPoints[1] = _jumpStartPosition + headingVector * 3.0f + glm::vec3(0.0f, 5.0f, 0.0f); // Apex control
+                    _jumpControlPoints[2] = _jumpStartPosition + headingVector * 7.5f + glm::vec3(0.0f, 5.0f, 0.0f); // Mid control
+                    _jumpControlPoints[3] = _jumpStartPosition + headingVector * 10.0f; // End position
+
+                }
+            break;
+
             case GLFW_KEY_3:
                 currCamera = CameraType::THIRDPERSON;
                 if (_pTPCam == nullptr) {
@@ -392,6 +404,12 @@ void FPEngine::mSetupBuffers() {
     glVertexAttribPointer(_lightingShaderAttributeLocations.vPos, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
 
     glBindVertexArray(0);
+
+    glGenVertexArrays(1, &_curveVAO);
+    glGenBuffers(1, &_curveVBO);
+
+    _createCurve(_curveVAO, _curveVBO, _numCurvePoints);
+
 }
 
 void FPEngine::_createGroundBuffers() {
@@ -571,10 +589,18 @@ void FPEngine::mSetupScene() {
     _spotLight.width = glm::cos(glm::radians(15.0f));   // Spotlight cone width
     _spotLight.color = glm::vec3(1.0f, 0.0f, 0.0f);
 
+    //jump
+    _isJumping = false;
+    _jumpProgress = 0.0f;
+
 }
 
 
 void FPEngine::_renderScene(glm::mat4 viewMtx, glm::mat4 projMtx) const {
+    //for bezier
+    int time = _bezierCurve.currentPos;
+    float curveIndex= _bezierCurve.currentPos - time;
+
     //FOR THE GROUND
     // Use texture shader
     _textureShaderProgram->useProgram();
@@ -742,6 +768,15 @@ void FPEngine::_renderScene(glm::mat4 viewMtx, glm::mat4 projMtx) const {
 
     //draw arch
     _drawArch(viewMtx, projMtx);
+
+    //bezier curve
+    // Render Bézier Curve
+    _lightingShaderProgram->useProgram();
+
+    glm::mat4 curveModelMtx = glm::mat4(1.0f);
+    glm::mat4 curveMVP = projMtx * viewMtx * curveModelMtx;
+    glUniformMatrix4fv(_lightingShaderUniformLocations.mvpMatrix, 1, GL_FALSE, glm::value_ptr(curveMVP));
+
 }
 
 void FPEngine::_updateScene() {
@@ -760,6 +795,28 @@ void FPEngine::_updateScene() {
 
 
     _updateActiveCamera();
+    //handle jump
+    if (_isJumping) {
+        _jumpProgress = glm::clamp(_jumpProgress + 0.02f, 0.0f, 1.0f); // Keep progress within bounds
+
+        glm::vec3 jumpPosition = _evalBezierCurve(
+            _jumpControlPoints[0],
+            _jumpControlPoints[1],
+            _jumpControlPoints[2],
+            _jumpControlPoints[3],
+            _jumpProgress
+        );
+
+        _pVehicle->setPosition(jumpPosition);
+
+        if (_jumpProgress >= 1.0f) {
+            _isJumping = false;
+            _jumpProgress = 0.0f; // Reset progress for next jump
+        }
+        fprintf(stdout, "[DEBUG]: Jump Progress: %.2f, Position: (%.2f, %.2f, %.2f)\n",
+        _jumpProgress, jumpPosition.x, jumpPosition.y, jumpPosition.z);
+
+    }
 
     // Handle coin collisions
     for (auto it = _coins.begin(); it != _coins.end();) {
@@ -809,7 +866,7 @@ void FPEngine::_updateScene() {
     _collideMarblesWithWall();
     _collideMarblesWithMarbles();
 
-    if (!_isFalling && !_isBlinking) {
+    if (!_isFalling && !_isBlinking && !_isJumping) {
         // Handle player movement
         glm::vec3 movementVector(0.0f);
         if (_keys[GLFW_KEY_W]) movementVector += glm::vec3(sin(_pVehicle->getHeading()), 0.0f, cos(_pVehicle->getHeading())) * 0.2f;

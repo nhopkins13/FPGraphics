@@ -11,6 +11,7 @@ D: move right
 4: arcball camera
 5: free camera
 6: first person camera
+SPACE: jump
 
 SECTION B:
 
