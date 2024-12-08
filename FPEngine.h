@@ -34,6 +34,30 @@ enum class CameraType {
     THIRDPERSON
 };
 
+struct RectPlatform {
+    glm::vec3 position;
+    float lengthX;
+    float lengthZ;
+    GLuint vao;
+    GLuint vbo;
+    GLuint ebo;
+    GLuint textureID;
+    float buffer;
+    float fallBuffer;
+};
+
+struct DiskPlatform {
+    glm::vec3 position;
+    float inner_radius;
+    float outer_radius;
+    GLuint vao;
+    GLuint vbo;
+    GLuint ebo;
+    GLuint textureID;
+    float buffer;
+    float fallBuffer;
+};
+
 struct BezierCurve {
     glm::vec3* controlPoints = nullptr;
     GLuint numControlPoints = 0;
@@ -84,6 +108,10 @@ public:
     const float MARBLE_RADIUS = 0.5f;
     const float MARBLE_SPEED = 0.1f;
     glm::vec3 _marbleDirections[NUM_MARBLES];
+    std::vector<glm::vec3> _blueSpheres; // Positions of blue spheres
+    float BLUE_SPHERE_RADIUS = 0.5f;
+    void _initializeBlueSpheres();
+    void _drawBlueSpheres(glm::mat4 viewMtx, glm::mat4 projMtx) const;
     void _renderMinimap() const;
     void _createCurve(GLuint vao, GLuint vbo, GLsizei &numVAOPoints) const;
     glm::vec3 _evalBezierCurve(const glm::vec3 P0, const glm::vec3 P1, const glm::vec3 P2, const glm::vec3 P3, const GLfloat T) const;
@@ -104,12 +132,8 @@ public:
     int _blinkCount = 0;             // Count the number of blinks
     float _blinkingTime = 0.0f;
     const int MAX_BLINKS = 3;
-
-    //ground data
-    const int INNER_RADIUS = 10.0f;
-    const int OUTER_RADIUS = 40.0f;
-
-
+    float STARTING_RADIUS_I = 10.0f;
+    float STARTING_RADIUS_O = 40.0f;
 
 private:
     // Engine Setup and Cleanup
@@ -126,6 +150,11 @@ private:
     // Rendering
     void _renderScene(glm::mat4 viewMtx, glm::mat4 projMtx) const;
     void _updateScene();
+    void _initializePlatforms();
+    void _drawPlatforms(glm::mat4 viewMtx, glm::mat4 projMtx) const;
+
+    std::vector<RectPlatform> _rectPlatforms;
+    std::vector<DiskPlatform> _diskPlatforms;
 
     // Input Tracking
     static constexpr GLuint NUM_KEYS = GLFW_KEY_LAST;
@@ -160,16 +189,18 @@ private:
 
     GLuint _groundTexture;
     GLuint _loadAndRegisterTexture(const char* FILENAME);
-    GLuint _loadAndRegisterCubemap(const std::vector<const char*>& faces);
 
     void mSetupTextures();
     /// \desc total number of textures in our scene
-    static constexpr GLuint NUM_TEXTURES = 2;
+    static constexpr GLuint NUM_TEXTURES = 5;
     /// \desc used to index through our texture array to give named access
     enum TEXTURE_ID {
         /// \desc metal texture
         RUG = 0,
-        MARBLE = 1
+        MARBLE = 1,
+        RAINBOW = 2,
+        IRISES = 3,
+        QUARTZ = 4,
     };
     /// \desc texture handles for our textures
     GLuint _texHandles[NUM_TEXTURES];
@@ -261,8 +292,22 @@ private:
 
 
     // Helper Functions
+    void _generateRectangle(RectPlatform& rect);
+    void _generateDisk(DiskPlatform& disk, int numSegments);
+
+
     void _drawArch(glm::mat4 viewMtx, glm::mat4 projMtx) const;
     void _createArchBuffers();
-    void _createGroundBuffers();
     void _generateEnvironment();
-    void _computeAndSendMatrixUniforms(glm::mat4 modelMtx, glm::mat4 viewMtx, glm::m
+    void _computeAndSendMatrixUniforms(glm::mat4 modelMtx, glm::mat4 viewMtx, glm::mat4 projMtx) const;
+    void generateTorusMesh(std::vector<GLfloat>& vertices, std::vector<GLuint>& indices, float innerRadius, float outerRadius, int numSides, int numRings);
+
+
+    // Zoom Handling
+    bool _shiftPressed = false;    // Tracks if Shift is pressed
+    bool _zooming = false;         // Tracks if currently zooming
+    float _zoomSensitivity = 0.05f; // Adjust as needed
+
+};
+
+#endif // MP_ENGINE_H

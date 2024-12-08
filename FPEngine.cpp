@@ -29,6 +29,8 @@ FPEngine::FPEngine()
     _mousePosition = glm::vec2(MOUSE_UNINITIALIZED, MOUSE_UNINITIALIZED );
     _leftMouseButtonState = GLFW_RELEASE;
     _enemies = new std::vector<Marble>();
+    _rectPlatforms.clear();
+    _diskPlatforms.clear();
 }
 
 FPEngine::~FPEngine() {
@@ -53,7 +55,11 @@ FPEngine::~FPEngine() {
 
 void FPEngine::mSetupTextures() {
     glActiveTexture(GL_TEXTURE0);
-    _texHandles[TEXTURE_ID::RUG] = _loadAndRegisterTexture("images/groundImage.png");
+    _texHandles[TEXTURE_ID::RAINBOW] = _loadAndRegisterTexture("images/rainbow.png");
+    _texHandles[TEXTURE_ID::RUG] = _loadAndRegisterTexture("images/rug.png");
+    _texHandles[TEXTURE_ID::MARBLE] = _loadAndRegisterTexture("images/marble.png");
+    _texHandles[TEXTURE_ID::IRISES] = _loadAndRegisterTexture("images/irises.png");
+    _texHandles[TEXTURE_ID::QUARTZ] = _loadAndRegisterTexture("images/quartz.png");
 }
 
 GLuint FPEngine::_loadAndRegisterTexture(const char* FILENAME) {
@@ -224,14 +230,11 @@ void FPEngine::handleKeyEvent(GLint key, GLint action, GLint mods) {
                 break;
             break;
 
-            case GLFW_KEY_4:
+            case GLFW_KEY_2:
                 currCamera = CameraType::ARCBALL; // Switch to Arcball immediately when UFO is selected
                 break;
 
-            case GLFW_KEY_5:
-                currCamera = CameraType::FREECAM; // Switch to Freecam immediately
-                break;
-            case GLFW_KEY_6:
+            case GLFW_KEY_1:
                 currCamera = CameraType::FIRSTPERSON; // Switch to First Person view
 
                 if (_pFPCam == nullptr) {
@@ -246,9 +249,6 @@ void FPEngine::handleKeyEvent(GLint key, GLint action, GLint mods) {
         }
     }
 }
-
-
-
 
 void FPEngine::handleMouseButtonEvent(GLint button, GLint action, GLint mods) {
     // if the event is for the left mouse button
@@ -385,13 +385,18 @@ void FPEngine::mSetupShaders() {
 void FPEngine::mSetupBuffers() {
     fprintf(stdout, "[DEBUG]: Setting up buffers...\n");
 
-    //connect our 3D Object Library to our shader
-    CSCI441::setVertexAttributeLocations( _lightingShaderAttributeLocations.vPos, _lightingShaderAttributeLocations.vNormal);
+    // Load textures first
+    mSetupTextures();
 
-    _createGroundBuffers();
+    // Connect our 3D Object Library to our shader
+    CSCI441::setVertexAttributeLocations(_lightingShaderAttributeLocations.vPos, _lightingShaderAttributeLocations.vNormal);
+
+    // Setup buffers after textures
+    _initializePlatforms();
     _createArchBuffers();
     _generateEnvironment();
 
+    // Marble buffers
     glGenVertexArrays(1, &_marbleVAO);
     glBindVertexArray(_marbleVAO);
 
@@ -399,7 +404,6 @@ void FPEngine::mSetupBuffers() {
     glBindBuffer(GL_ARRAY_BUFFER, _marbleVBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(_marbleLocations), _marbleLocations, GL_STATIC_DRAW);
 
-    // Set vertex attribute pointers for positions (no texture coordinates needed)
     glEnableVertexAttribArray(_lightingShaderAttributeLocations.vPos);
     glVertexAttribPointer(_lightingShaderAttributeLocations.vPos, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
 
@@ -409,136 +413,264 @@ void FPEngine::mSetupBuffers() {
     glGenBuffers(1, &_curveVBO);
 
     _createCurve(_curveVAO, _curveVBO, _numCurvePoints);
-
 }
 
-void FPEngine::_createGroundBuffers() {
+
+void FPEngine::_initializePlatforms() {
+    const float INNER_RADIUS = 10.0f;  // Inner radius of the disks
+    const float OUTER_RADIUS = 40.0f;  // Outer radius of the disks
+    const float GAP = 30.0f;           // Gap between the edges of the disks
+    const int numSegments = 100;
+
+    // Calculate the distance between centers of the disks
+    float diskSeparation = OUTER_RADIUS + GAP + OUTER_RADIUS;
+
+    // --- Disk 1 (Center at origin) ---
+    DiskPlatform disk1;
+    disk1.position = glm::vec3(0.0f, 0.0f, 0.0f);
+    disk1.inner_radius = INNER_RADIUS;
+    disk1.outer_radius = OUTER_RADIUS;
+    disk1.textureID = _texHandles[TEXTURE_ID::RUG];
+    disk1.buffer = 2;
+    disk1.fallBuffer = 1.0;
+    _generateDisk(disk1, numSegments);
+    _diskPlatforms.push_back(disk1);
+
+    // --- Disk 2 (20 units apart + radii) ---
+    DiskPlatform disk2;
+    disk2.position = glm::vec3(diskSeparation, 0.0f, 0.0f); // Proper separation
+    disk2.inner_radius = INNER_RADIUS;
+    disk2.outer_radius = OUTER_RADIUS;
+    disk2.textureID = _texHandles[TEXTURE_ID::RAINBOW];
+    disk2.buffer = 2;
+    disk2.fallBuffer = 1.0;
+    _generateDisk(disk2, numSegments);
+    _diskPlatforms.push_back(disk2);
+
+    // --- Rectangle Platform (Connecting the two disks) ---
+    RectPlatform rect;
+    rect.position = glm::vec3(diskSeparation / 2.0f, 0.0f, 0.0f); // Midpoint between disks
+    rect.lengthX = 10.0f;
+    rect.lengthZ = 5.0f;
+    rect.buffer = 2;
+    rect.fallBuffer = 0.8;
+    rect.textureID = _texHandles[TEXTURE_ID::IRISES];
+    _generateRectangle(rect);
+    _rectPlatforms.push_back(rect);
+
+    // Rectangle 1 (Above Disk 1)
+    RectPlatform rect1;
+    rect1.position = glm::vec3(disk1.position.x, 0.0f, disk1.position.z + 50.0f);
+    rect1.lengthX = 5.0f;  // Same size as existing rectangle
+    rect1.lengthZ = 10.0f;
+    rect1.buffer = 2;
+    rect1.fallBuffer = 0.8;
+    rect1.textureID = _texHandles[TEXTURE_ID::IRISES];
+    _generateRectangle(rect1);
+    _rectPlatforms.push_back(rect1);
+
+    // Rectangle 2 (Above Disk 2)
+    RectPlatform rect2;
+    rect2.position = glm::vec3(disk2.position.x, 0.0f, disk2.position.z + 50.0f);
+    rect2.lengthX = 5.0f;  // Same size as existing rectangle
+    rect2.lengthZ = 10.0f;
+    rect2.buffer = 2;
+    rect2.fallBuffer = 0.8;
+    rect2.textureID = _texHandles[TEXTURE_ID::IRISES];
+    _generateRectangle(rect2);
+    _rectPlatforms.push_back(rect2);
+
+    // Larger Rectangle (Higher Above the Smaller Rectangles)
+    RectPlatform largerRect;
+    largerRect.position = glm::vec3((disk1.position.x + disk2.position.x) / 2.0f, 0.0f, (disk1.position.z + disk2.position.z) / 2.0f + 87.0f);
+    largerRect.lengthX = 200.0f;  // Larger size
+    largerRect.lengthZ = 50.0f;
+    largerRect.buffer = 2;
+    largerRect.fallBuffer = 0.8;
+    largerRect.textureID = _texHandles[TEXTURE_ID::QUARTZ];
+    _generateRectangle(largerRect);
+    _rectPlatforms.push_back(largerRect);
+}
+
+
+void FPEngine::_generateDisk(DiskPlatform& disk, int numSegments) {
     std::vector<GLfloat> vertices;
     std::vector<GLuint> indices;
 
-    float innerRadius = INNER_RADIUS;
-    float outerRadius = OUTER_RADIUS;
-    int numSegments = 100; // Increase for smoother ring
-
-    // Generate vertices for the flat ring
     for (int i = 0; i <= numSegments; ++i) {
         float angle = (float)i / numSegments * 2.0f * M_PI;
-
-        float xOuter = outerRadius * cos(angle);
-        float zOuter = outerRadius * sin(angle);
-        float uOuter = (cos(angle) + 1.0f) * 0.5f; // Map texture coordinates
-        float vOuter = (sin(angle) + 1.0f) * 0.5f;
-
-        float xInner = innerRadius * cos(angle);
-        float zInner = innerRadius * sin(angle);
-        float uInner = (cos(angle) * (innerRadius / outerRadius) + 1.0f) * 0.5f;
-        float vInner = (sin(angle) * (innerRadius / outerRadius) + 1.0f) * 0.5f;
-
-        // Outer vertex
-        vertices.push_back(xOuter);
-        vertices.push_back(0.0f); // Flat Y-coordinate
-        vertices.push_back(zOuter);
-        vertices.push_back(uOuter);
-        vertices.push_back(vOuter);
+        float cosAngle = cos(angle);
+        float sinAngle = sin(angle);
 
         // Inner vertex
-        vertices.push_back(xInner);
-        vertices.push_back(0.0f); // Flat Y-coordinate
-        vertices.push_back(zInner);
-        vertices.push_back(uInner);
-        vertices.push_back(vInner);
+        vertices.insert(vertices.end(), {
+            disk.inner_radius * cosAngle, 0.0f, disk.inner_radius * sinAngle,
+            0.5f + (cosAngle * 0.5f * (disk.inner_radius / disk.outer_radius)), // Adjusted texture scaling
+            0.5f + (sinAngle * 0.5f * (disk.inner_radius / disk.outer_radius))
+        });
+
+        // Outer vertex
+        vertices.insert(vertices.end(), {
+            disk.outer_radius * cosAngle, 0.0f, disk.outer_radius * sinAngle,
+            0.5f + cosAngle * 0.5f,
+            0.5f + sinAngle * 0.5f
+        });
+
+        if (i < numSegments) {
+            indices.push_back(i * 2);
+            indices.push_back(i * 2 + 1);
+            indices.push_back((i + 1) * 2);
+
+            indices.push_back(i * 2 + 1);
+            indices.push_back((i + 1) * 2 + 1);
+            indices.push_back((i + 1) * 2);
+        }
     }
 
-    // Generate indices for the ring
-    for (int i = 0; i < numSegments; ++i) {
-        int outer1 = i * 2;
-        int inner1 = outer1 + 1;
-        int outer2 = (i + 1) * 2;
-        int inner2 = outer2 + 1;
+    glGenVertexArrays(1, &disk.vao);
+    glBindVertexArray(disk.vao);
 
-        // First triangle
-        indices.push_back(outer1);
-        indices.push_back(inner1);
-        indices.push_back(outer2);
-
-        // Second triangle
-        indices.push_back(outer2);
-        indices.push_back(inner1);
-        indices.push_back(inner2);
-    }
-
-    // Create VAO and VBO
-    glGenVertexArrays(1, &_groundVAO);
-    glBindVertexArray(_groundVAO);
-
-    GLuint groundVBO, groundEBO;
-    glGenBuffers(1, &groundVBO);
-    glGenBuffers(1, &groundEBO);
-
-    // Upload vertex data
-    glBindBuffer(GL_ARRAY_BUFFER, groundVBO);
+    GLuint vbo, ebo;
+    glGenBuffers(1, &vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
     glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(GLfloat), vertices.data(), GL_STATIC_DRAW);
 
-    // Upload index data
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, groundEBO);
+    glGenBuffers(1, &ebo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(GLuint), indices.data(), GL_STATIC_DRAW);
 
-    // Bind vertex positions (location = 0)
+    glEnableVertexAttribArray(0); // Position
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)0);
+    glEnableVertexAttribArray(1); // Texture coordinates
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
+
+    glBindVertexArray(0);
+}
+
+void FPEngine::_generateRectangle(RectPlatform& rect) {
+    GLfloat vertices[] = {
+        -rect.lengthX / 2, 0.0f, -rect.lengthZ / 2,  0.0f, 0.0f, // Bottom-left
+         rect.lengthX / 2, 0.0f, -rect.lengthZ / 2,  1.0f, 0.0f, // Bottom-right
+         rect.lengthX / 2, 0.0f,  rect.lengthZ / 2,  1.0f, 1.0f, // Top-right
+        -rect.lengthX / 2, 0.0f,  rect.lengthZ / 2,  0.0f, 1.0f  // Top-left
+    };
+
+    GLuint indices[] = { 0, 1, 2, 2, 3, 0 };
+
+    glGenVertexArrays(1, &rect.vao);
+    glBindVertexArray(rect.vao);
+
+    GLuint vbo, ebo;
+    glGenBuffers(1, &vbo);
+    glGenBuffers(1, &ebo);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)0);
-
-    // Bind texture coordinates (location = 1)
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
 
     glBindVertexArray(0);
-
-    _numGroundPoints = static_cast<GLuint>(indices.size());
 }
 
+void FPEngine::_drawPlatforms(glm::mat4 viewMtx, glm::mat4 projMtx) const {
+    _textureShaderProgram->useProgram();
+
+    // Draw Disk Platforms
+    for (const DiskPlatform& platform : _diskPlatforms) {
+        glm::mat4 modelMtx = glm::translate(glm::mat4(1.0f), platform.position);
+        glm::mat4 mvpMtx = projMtx * viewMtx * modelMtx;
+
+        glUniformMatrix4fv(_textureShaderUniformLocations.mvpMatrix, 1, GL_FALSE, glm::value_ptr(mvpMtx));
+        glBindVertexArray(platform.vao);
+
+        glActiveTexture(GL_TEXTURE0); // Activate Texture Unit 0
+        glBindTexture(GL_TEXTURE_2D, platform.textureID); // Bind the texture
+        glDrawElements(GL_TRIANGLES, 6 * 100, GL_UNSIGNED_INT, nullptr);
+        glBindVertexArray(0);
+        glUniform1i(_textureShaderUniformLocations.aTextMap, 0); // Ensure shader uses Texture Unit 0
+
+    }
+
+    // Draw Rectangle Platforms
+    for (const RectPlatform& platform : _rectPlatforms) {
+        glm::mat4 modelMtx = glm::translate(glm::mat4(1.0f), platform.position);
+        glm::mat4 mvpMtx = projMtx * viewMtx * modelMtx;
+
+        glUniformMatrix4fv(_textureShaderUniformLocations.mvpMatrix, 1, GL_FALSE, glm::value_ptr(mvpMtx));
+        glBindTexture(GL_TEXTURE_2D, platform.textureID);
+
+        glBindVertexArray(platform.vao);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+        glBindVertexArray(0);
+    }
+}
 
 void FPEngine::_generateEnvironment() {
     fprintf(stdout, "[DEBUG]: Generating racetrack environment...\n");
     srand(static_cast<unsigned int>(time(0)));
 
-    const float innerRadius = INNER_RADIUS;
-    const float outerRadius = OUTER_RADIUS;
-    const int numSegments = 20; // Number of segments for placing objects
+    const int numSegments = 17;
 
-    // Generate trees and spotlights along the inner and outer edges
-    for (int i = 0; i < numSegments; ++i) {
-        float angle = static_cast<float>(i) / numSegments * 2.0f * M_PI;
-        float cosAngle = cos(angle);
-        float sinAngle = sin(angle);
+    // Generate trees and lamps for Disk Platforms (along inner and outer radii)
+    for (const DiskPlatform& disk : _diskPlatforms) {
+        for (int i = 0; i < numSegments; ++i) {
+            float angle = static_cast<float>(i) / numSegments * 2.0f * M_PI;
+            float cosAngle = cos(angle);
+            float sinAngle = sin(angle);
 
-        glm::vec3 innerPosition(innerRadius * cosAngle, 0.0f, innerRadius * sinAngle);
-        glm::vec3 outerPosition(outerRadius * cosAngle, 0.0f, outerRadius * sinAngle);
+            glm::vec3 innerPosition = disk.position + glm::vec3(disk.inner_radius * cosAngle, 0.0f, disk.inner_radius * sinAngle);
+            glm::vec3 outerPosition = disk.position + glm::vec3(disk.outer_radius * cosAngle, 0.0f, disk.outer_radius * sinAngle);
 
-        if (i % 2 == 0) {
-            // Place a tree
-            glm::mat4 innerTreeMatrix = glm::translate(glm::mat4(1.0f), innerPosition);
-            glm::mat4 innerLeavesMatrix = glm::translate(innerTreeMatrix, glm::vec3(0, 5, 0));
-            _trees.emplace_back(TreeData{innerTreeMatrix, innerLeavesMatrix});
 
-            glm::mat4 outerTreeMatrix = glm::translate(glm::mat4(1.0f), outerPosition);
-            glm::mat4 outerLeavesMatrix = glm::translate(outerTreeMatrix, glm::vec3(0, 5, 0));
-            _trees.emplace_back(TreeData{outerTreeMatrix, outerLeavesMatrix});
-        } else {
-            // Place a spotlight
-            glm::mat4 innerLightMatrix = glm::translate(glm::mat4(1.0f), innerPosition);
-            _lamps.emplace_back(LampData{
+            if (i % 2 == 0) {
+                // Trees
+                glm::mat4 innerTreeMatrix = glm::translate(glm::mat4(1.0f), innerPosition);
+                glm::mat4 innerLeavesMatrix = glm::translate(innerTreeMatrix, glm::vec3(0, 5, 0));
+                _trees.emplace_back(TreeData{innerTreeMatrix, innerLeavesMatrix});
 
-                .modelMatrixPost = innerLightMatrix,
-                .modelMatrixLight = glm::translate(innerLightMatrix, glm::vec3(0, 7, 0)),
-                .position = innerPosition
-            });
+                glm::mat4 outerTreeMatrix = glm::translate(glm::mat4(1.0f), outerPosition);
+                glm::mat4 outerLeavesMatrix = glm::translate(outerTreeMatrix, glm::vec3(0, 5, 0));
+                _trees.emplace_back(TreeData{outerTreeMatrix, outerLeavesMatrix});
+            } else {
+                // Lamps
+                glm::mat4 innerLampMatrix = glm::translate(glm::mat4(1.0f), innerPosition);
+                _lamps.emplace_back(LampData{innerLampMatrix, glm::translate(innerLampMatrix, glm::vec3(0, 7, 0)), innerPosition});
 
-            glm::mat4 outerLightMatrix = glm::translate(glm::mat4(1.0f), outerPosition);
-            _lamps.emplace_back(LampData{
-                .modelMatrixPost = outerLightMatrix,
-                .modelMatrixLight = glm::translate(outerLightMatrix, glm::vec3(0, 7, 0)),
-                .position = outerPosition,// Adjust height for light
-            });
+                glm::mat4 outerLampMatrix = glm::translate(glm::mat4(1.0f), outerPosition);
+                _lamps.emplace_back(LampData{outerLampMatrix, glm::translate(outerLampMatrix, glm::vec3(0, 7, 0)), outerPosition});
+            }
+        }
+    }
+
+    // Generate trees and lamps for Rectangular Platforms only if dimensions are valid
+    for (const RectPlatform& rect : _rectPlatforms) {
+        if (rect.lengthX < 20.0f || rect.lengthZ < 20.0f) {
+            continue; // Skip if either dimension is smaller than 20
+        }
+
+        const int numObjects = 20; // Number of trees/lamps
+
+        for (int i = 0; i < numObjects; ++i) {
+            float x = getRand() * rect.lengthX - rect.lengthX / 2.0f;
+            float z = getRand() * rect.lengthZ - rect.lengthZ / 2.0f;
+            glm::vec3 position = rect.position + glm::vec3(x, 0.0f, z);
+
+            if (i % 2 == 0) {
+                // Trees
+                glm::mat4 treeMatrix = glm::translate(glm::mat4(1.0f), position);
+                glm::mat4 leavesMatrix = glm::translate(treeMatrix, glm::vec3(0, 5, 0));
+                _trees.emplace_back(TreeData{treeMatrix, leavesMatrix});
+            } else {
+                // Lamps
+                glm::mat4 lampMatrix = glm::translate(glm::mat4(1.0f), position);
+                _lamps.emplace_back(LampData{lampMatrix, glm::translate(lampMatrix, glm::vec3(0, 7, 0)), position});
+            }
         }
     }
 }
@@ -556,15 +688,16 @@ void FPEngine::mSetupScene() {
 
     float initialAngle = 0.0f; // Start at the 0-degree mark of the track
     float initialHeading = glm::radians(180.0f);
-    float startingRadius = (INNER_RADIUS + OUTER_RADIUS) / 2.0f; // Midpoint of the track
+    float startingRadius = (STARTING_RADIUS_I + STARTING_RADIUS_O) / 2.0f; // Midpoint of the track
     float startX = startingRadius * cos(initialAngle);
     float startZ = startingRadius * sin(initialAngle);
     _pVehicle->setPosition(glm::vec3(startX, 0.0f, startZ));
     _pVehicle->setHeading(initialHeading);
 
-    //initialize coins and marbles
+    //initialize coins and marbles and spheres
     _initializeMarbleLocations();
     _initializeCoins();
+    _initializeBlueSpheres();
 
     // Initialize cameras
     _pArcballCam = new ArcballCamera();
@@ -597,6 +730,8 @@ void FPEngine::mSetupScene() {
 
 
 void FPEngine::_renderScene(glm::mat4 viewMtx, glm::mat4 projMtx) const {
+    _drawPlatforms(viewMtx, projMtx);
+    _drawBlueSpheres(viewMtx, projMtx);
     //for bezier
     int time = _bezierCurve.currentPos;
     float curveIndex= _bezierCurve.currentPos - time;
@@ -620,6 +755,7 @@ void FPEngine::_renderScene(glm::mat4 viewMtx, glm::mat4 projMtx) const {
     glBindVertexArray(_groundVAO);
     glDrawElements(GL_TRIANGLES, _numGroundPoints, GL_UNSIGNED_INT, nullptr);
     glBindVertexArray(0);
+
 
     // Send spotlight information
     glUniform3fv(_textureShaderUniformLocations.spotLightPosition, 1, glm::value_ptr(_spotLight.pos));
@@ -780,8 +916,7 @@ void FPEngine::_renderScene(glm::mat4 viewMtx, glm::mat4 projMtx) const {
 }
 
 void FPEngine::_updateScene() {
-    const float FALL_BOUNDARY = OUTER_RADIUS; // Match ground size
-    const glm::vec3 START_POSITION((INNER_RADIUS + OUTER_RADIUS) / 2.0f, 0.0f, 0.0f);
+    const glm::vec3 START_POSITION((STARTING_RADIUS_I + STARTING_RADIUS_O) / 2.0f, 0.0f, 0.0f);
     const float BLINKING_DURATION = 3.0f; // Total blinking duration in seconds
     _animationTime += 0.016f;
 
@@ -793,8 +928,17 @@ void FPEngine::_updateScene() {
     _spotLight.pos = currentPosition + glm::vec3(0.0f, 10.0f, 0.0f);
     _spotLight.dir = glm::vec3(0.0f, -1.0f, 0.0f);
 
-
     _updateActiveCamera();
+
+    //handle blue spheres
+    for (auto it = _blueSpheres.begin(); it != _blueSpheres.end();) {
+        if (checkCollision(_pVehicle->getPosition(), _pVehicle->getBoundingRadius(), *it, BLUE_SPHERE_RADIUS)) {
+            _initializeMarbleLocations(); // Reset marbles
+            it = _blueSpheres.erase(it); // Remove the collected sphere
+        } else {
+            ++it;
+        }
+    }
     //handle jump
     if (_isJumping) {
         _jumpProgress = glm::clamp(_jumpProgress + 0.02f, 0.0f, 1.0f); // Keep progress within bounds
@@ -813,9 +957,6 @@ void FPEngine::_updateScene() {
             _isJumping = false;
             _jumpProgress = 0.0f; // Reset progress for next jump
         }
-        fprintf(stdout, "[DEBUG]: Jump Progress: %.2f, Position: (%.2f, %.2f, %.2f)\n",
-        _jumpProgress, jumpPosition.x, jumpPosition.y, jumpPosition.z);
-
     }
 
     // Handle coin collisions
@@ -825,8 +966,6 @@ void FPEngine::_updateScene() {
         float distance = glm::length(currentPosition - coinPosition);
 
         if (checkCollision(currentPosition, vehicleRadius, coinPosition, coinRadius)) {
-            fprintf(stdout, "[INFO]: Coin collected! Removing coin at position (%.2f, %.2f, %.2f)\n",
-                    coinPosition.x, coinPosition.y, coinPosition.z);
             _pVehicle->setCoinCount(_pVehicle->getCoinCount() + 1);
             it = _coins.erase(it);
         } else {
@@ -835,8 +974,6 @@ void FPEngine::_updateScene() {
     }
 
     if (_coins.empty()) {
-        fprintf(stdout, "[INFO]: All coins collected! Deleting all enemies.\n");
-
         // Clear the enemies vector
         _enemies->clear();
         for (int i = 0; i < NUM_MARBLES; ++i) {
@@ -888,17 +1025,37 @@ void FPEngine::_updateScene() {
             }
         }
 
-        bool isOffPlatform = glm::abs(newPosition.x) > (FALL_BOUNDARY) ||
-                             glm::abs(newPosition.z) > (FALL_BOUNDARY);
+        bool isOffPlatform = true;
+
+        // Check Disk Platforms
+        for (const DiskPlatform& disk : _diskPlatforms) {
+            glm::vec3 relativePos = newPosition - disk.position;
+            float distToCenter = glm::length(glm::vec2(relativePos.x, relativePos.z));
+            if (distToCenter >= (disk.inner_radius - disk.fallBuffer) && distToCenter <= (disk.outer_radius+disk.fallBuffer)) {
+                isOffPlatform = false;
+                break; // Still on a disk platform
+            }
+        }
+
+        // Check Rect Platforms
+        for (const RectPlatform& rect : _rectPlatforms) {
+            glm::vec3 relativePos = newPosition - rect.position;
+
+            // Correct boundary check with a small margin
+            if (glm::abs(relativePos.x) <= (rect.lengthX / 2.0f + rect.fallBuffer) &&
+                glm::abs(relativePos.z) <= (rect.lengthZ / 2.0f + rect.fallBuffer)) {
+                isOffPlatform = false;
+                break; // Still on a rectangular platform
+                }
+        }
 
         if (isOffPlatform) {
             _isFalling = true;
             _fallTime = 0.0f;
         }
 
-        if (!_isBlinking) {
+        if (!_isBlinking && !isOffPlatform) {
             _pVehicle->setPosition(newPosition);
-
         }
     } else if (_isBlinking) {
         // Handle blinking
@@ -916,14 +1073,8 @@ void FPEngine::_updateScene() {
 
             // Reset vehicle and marbles
             _pVehicle->setPosition(START_POSITION);
-            for (int i = 0; i < 4; ++i) {
-                _marbleLocations[i] = glm::vec3(
-                    (i % 2 == 0 ? -WORLD_SIZE : WORLD_SIZE) / 2.0f,
-                    Marble::RADIUS,
-                    (i / 2 == 0 ? -WORLD_SIZE : WORLD_SIZE) / 2.0f
-                );
-                _marbleDirections[i] = glm::normalize(glm::vec3(0.0f) - _marbleLocations[i]); // Point to center
-            }
+            _initializeMarbleLocations(); // Reset marbles
+
         }
     } else if (_isFalling) {
         // Handle falling
@@ -932,7 +1083,6 @@ void FPEngine::_updateScene() {
         if (_fallTime > 3.0f) {
             _pVehicle->setPosition(START_POSITION);
             _isFalling = false;
-            _initializeMarbleLocations(); // Reset marbles
             if (currCamera == CameraType::FIRSTPERSON) _pFPCam->updatePositionAndOrientation(START_POSITION, _pVehicle->getHeading());
             else if (currCamera == CameraType::ARCBALL) _pArcballCam->setTarget(START_POSITION);
             else if (currCamera == CameraType::THIRDPERSON) _pTPCam->update(START_POSITION, _pVehicle->getHeading());
@@ -1000,81 +1150,87 @@ void FPEngine::_renderMinimap() const {
 
     // Disable depth testing for the minimap
     glDisable(GL_DEPTH_TEST);
+    glClear(GL_DEPTH_BUFFER_BIT); // Clear depth buffer
 
-    // Clear only the depth buffer to preserve the main scene's color
-    glClear(GL_DEPTH_BUFFER_BIT);
-
-    // Set up an orthographic projection for the minimap (top-down view)
+    // Set up orthographic projection for the minimap
     glm::mat4 projMtx = glm::ortho(
         -WORLD_SIZE / 2.0f, WORLD_SIZE / 2.0f,
         -WORLD_SIZE / 2.0f, WORLD_SIZE / 2.0f,
         -10.0f, 10.0f
     );
 
-    // Flip the map by rotating the view matrix 180 degrees around the Y-axis
     glm::mat4 viewMtx = glm::lookAt(
-        glm::vec3(0.0f, 10.0f, 0.0f),  // Camera positioned directly above
-        glm::vec3(0.0f, 0.0f, 0.0f),   // Looking at the center of the platform
-        glm::vec3(0.0f, 0.0f, -1.0f)   // "Up" direction for the minimap
+        glm::vec3(0.0f, 10.0f, 0.0f),
+        glm::vec3(0.0f, 0.0f, 0.0f),
+        glm::vec3(0.0f, 0.0f, -1.0f)
     );
     viewMtx = glm::rotate(viewMtx, glm::radians(180.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
-    // Render the ground in the minimap
     _textureShaderProgram->useProgram();
-    glm::mat4 groundModelMtx = glm::mat4(1.0f); // Identity matrix for ground
-    glm::mat4 groundMVP = projMtx * viewMtx * groundModelMtx;
-    glUniformMatrix4fv(_textureShaderUniformLocations.mvpMatrix, 1, GL_FALSE, glm::value_ptr(groundMVP));
 
-    // Bind ground texture and VAO
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, _texHandles[TEXTURE_ID::RUG]);
-    glUniform1i(_textureShaderUniformLocations.aTextMap, 0);
-    glBindVertexArray(_groundVAO);
+    // --- Render Disk Platforms ---
+    for (const DiskPlatform& disk : _diskPlatforms) {
+        glm::mat4 modelMtx = glm::translate(glm::mat4(1.0f), disk.position);
+        glm::mat4 mvpMtx = projMtx * viewMtx * modelMtx;
+        glUniformMatrix4fv(_textureShaderUniformLocations.mvpMatrix, 1, GL_FALSE, glm::value_ptr(mvpMtx));
 
-    // Draw the ground using the correct index count
-    glDrawElements(GL_TRIANGLES, _numGroundPoints, GL_UNSIGNED_INT, nullptr);
-    glBindVertexArray(0);
+        glBindTexture(GL_TEXTURE_2D, disk.textureID);
+        glBindVertexArray(disk.vao);
+        glDrawElements(GL_TRIANGLES, 6 * 100, GL_UNSIGNED_INT, nullptr); // Adjust for disk
+        glBindVertexArray(0);
+    }
+
+    // --- Render Rect Platforms ---
+    for (const RectPlatform& rect : _rectPlatforms) {
+        glm::mat4 modelMtx = glm::translate(glm::mat4(1.0f), rect.position);
+        glm::mat4 mvpMtx = projMtx * viewMtx * modelMtx;
+        glUniformMatrix4fv(_textureShaderUniformLocations.mvpMatrix, 1, GL_FALSE, glm::value_ptr(mvpMtx));
+
+        glBindTexture(GL_TEXTURE_2D, rect.textureID);
+        glBindVertexArray(rect.vao);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr); // 6 indices for a rectangle
+        glBindVertexArray(0);
+    }
 
     // Render the player as a green square in the minimap
     _lightingShaderProgram->useProgram();
     glm::mat4 playerModelMtx = glm::translate(glm::mat4(1.0f), _pVehicle->getPosition());
-    playerModelMtx = glm::scale(playerModelMtx, glm::vec3(5.0f)); // Size for minimap
+    playerModelMtx = glm::scale(playerModelMtx, glm::vec3(5.0f));
     glm::mat4 playerMVP = projMtx * viewMtx * playerModelMtx;
     glUniformMatrix4fv(_lightingShaderUniformLocations.mvpMatrix, 1, GL_FALSE, glm::value_ptr(playerMVP));
-    glUniform3fv(_lightingShaderUniformLocations.materialAmbient, 1, glm::value_ptr(glm::vec3(0.0f, 1.0f, 0.0f))); // Green color
+    glUniform3fv(_lightingShaderUniformLocations.materialAmbient, 1, glm::value_ptr(glm::vec3(0.0f, 1.0f, 0.0f)));
     glUniform3fv(_lightingShaderUniformLocations.materialDiffuse, 1, glm::value_ptr(glm::vec3(0.0f, 1.0f, 0.0f)));
     CSCI441::drawSolidCube(1.0f);
 
-    // Render enemies as red squares in the minimap
+    // Render enemies as red squares
     for (const glm::vec3& enemyPosition : _marbleLocations) {
-        if (enemyPosition != glm::vec3(0.0f, 0.0f, 0.0f)) { // Skip invalid positions
+        if (enemyPosition != glm::vec3(0.0f)) {
             glm::mat4 enemyModelMtx = glm::translate(glm::mat4(1.0f), enemyPosition);
-            enemyModelMtx = glm::scale(enemyModelMtx, glm::vec3(5.0f)); // Size for minimap
+            enemyModelMtx = glm::scale(enemyModelMtx, glm::vec3(5.0f));
             glm::mat4 enemyMVP = projMtx * viewMtx * enemyModelMtx;
             glUniformMatrix4fv(_lightingShaderUniformLocations.mvpMatrix, 1, GL_FALSE, glm::value_ptr(enemyMVP));
-            glUniform3fv(_lightingShaderUniformLocations.materialAmbient, 1, glm::value_ptr(glm::vec3(1.0f, 0.0f, 0.0f))); // Red color
+            glUniform3fv(_lightingShaderUniformLocations.materialAmbient, 1, glm::value_ptr(glm::vec3(1.0f, 0.0f, 0.0f)));
             glUniform3fv(_lightingShaderUniformLocations.materialDiffuse, 1, glm::value_ptr(glm::vec3(1.0f, 0.0f, 0.0f)));
             CSCI441::drawSolidCube(1.0f);
         }
     }
 
-    // Render coins as yellow squares in the minimap
+    // Render coins as yellow squares
     for (const Coin& coin : _coins) {
         glm::mat4 coinModelMtx = glm::translate(glm::mat4(1.0f), coin.getPosition());
-        coinModelMtx = glm::scale(coinModelMtx, glm::vec3(5.0f)); // Size for minimap
+        coinModelMtx = glm::scale(coinModelMtx, glm::vec3(5.0f));
         glm::mat4 coinMVP = projMtx * viewMtx * coinModelMtx;
         glUniformMatrix4fv(_lightingShaderUniformLocations.mvpMatrix, 1, GL_FALSE, glm::value_ptr(coinMVP));
-        glUniform3fv(_lightingShaderUniformLocations.materialAmbient, 1, glm::value_ptr(glm::vec3(1.0f, 1.0f, 0.0f))); // Yellow color
+        glUniform3fv(_lightingShaderUniformLocations.materialAmbient, 1, glm::value_ptr(glm::vec3(1.0f, 1.0f, 0.0f)));
         glUniform3fv(_lightingShaderUniformLocations.materialDiffuse, 1, glm::value_ptr(glm::vec3(1.0f, 1.0f, 0.0f)));
         CSCI441::drawSolidCube(1.0f);
     }
 
-    // Re-enable depth testing after rendering the minimap
+    // Re-enable depth testing and reset viewport
     glEnable(GL_DEPTH_TEST);
-
-    // Reset the viewport to the full screen
     glViewport(0, 0, framebufferWidth, framebufferHeight);
 }
+
 
 void FPEngine::_drawCoins(glm::mat4 viewMtx, glm::mat4 projMtx) const {
     _lightingShaderProgram->useProgram();
@@ -1234,6 +1390,92 @@ void FPEngine::mCleanupTextures() {
 //
 // Private Helper Functions
 
+void FPEngine::_drawBlueSpheres(glm::mat4 viewMtx, glm::mat4 projMtx) const {
+    _lightingShaderProgram->useProgram();
+
+    // Define material properties for blue spheres
+    glm::vec3 blueColor(0.0f, 0.0f, 1.0f);   // Blue diffuse color
+    glm::vec3 ambientColor(0.0f, 0.0f, 0.3f); // Dark blue ambient
+    glm::vec3 specularColor(0.3f, 0.3f, 0.5f); // Light specular reflection
+    float shininess = 32.0f;
+
+    for (const glm::vec3& spherePos : _blueSpheres) {
+        glm::mat4 modelMatrix = glm::translate(glm::mat4(1.0f), spherePos);
+        glm::mat4 mvpMatrix = projMtx * viewMtx * modelMatrix;
+
+        // Set uniforms for transformations
+        glUniformMatrix4fv(_lightingShaderUniformLocations.mvpMatrix, 1, GL_FALSE, glm::value_ptr(mvpMatrix));
+        glUniformMatrix4fv(_lightingShaderUniformLocations.modelMatrix, 1, GL_FALSE, glm::value_ptr(modelMatrix));
+
+        // Set material properties for the blue sphere
+        glUniform3fv(_lightingShaderUniformLocations.materialAmbient, 1, glm::value_ptr(ambientColor));
+        glUniform3fv(_lightingShaderUniformLocations.materialDiffuse, 1, glm::value_ptr(blueColor));
+        glUniform3fv(_lightingShaderUniformLocations.materialSpecular, 1, glm::value_ptr(specularColor));
+        glUniform1f(_lightingShaderUniformLocations.materialShininess, shininess);
+
+        // Draw the sphere
+        CSCI441::drawSolidSphere(BLUE_SPHERE_RADIUS, 16, 16);
+    }
+}
+
+void FPEngine::_initializeBlueSpheres() {
+    _blueSpheres.clear(); // Clear any previous spheres
+    const float HEIGHT_OFFSET = 1.0f; // Height above the platform
+    const int MAX_TRIES = 50;         // Max attempts to find a valid position
+
+    // Function to check if position is within a disk platform
+    auto isOnDiskPlatform = [](const glm::vec3& pos, const DiskPlatform& disk) {
+        float dist = glm::length(glm::vec2(pos.x - disk.position.x, pos.z - disk.position.z));
+        return dist >= disk.inner_radius && dist <= disk.outer_radius;
+    };
+
+    // Place blue spheres on disk platforms
+    for (const DiskPlatform& disk : _diskPlatforms) {
+        glm::vec3 position;
+        int tries = 0;
+
+        do {
+            float angle = getRand() * 2.0f * M_PI; // Random angle
+            float radius = disk.inner_radius + getRand() * (disk.outer_radius - disk.inner_radius);
+            float x = disk.position.x + radius * cos(angle);
+            float z = disk.position.z + radius * sin(angle);
+            position = glm::vec3(x, HEIGHT_OFFSET, z);
+            tries++;
+        } while (!isOnDiskPlatform(position, disk) && tries < MAX_TRIES);
+
+        if (tries < MAX_TRIES) {
+            _blueSpheres.push_back(position);
+        } else {
+            fprintf(stderr, "Failed to place blue sphere on a disk platform\n");
+        }
+    }
+
+    // Function to check if position is within a rectangle platform
+    auto isOnRectPlatform = [](const glm::vec3& pos, const RectPlatform& rect) {
+        glm::vec3 relativePos = pos - rect.position;
+        return glm::abs(relativePos.x) <= rect.lengthX / 2.0f && glm::abs(relativePos.z) <= rect.lengthZ / 2.0f;
+    };
+
+    // Place blue spheres on rectangle platforms
+    for (const RectPlatform& rect : _rectPlatforms) {
+        glm::vec3 position;
+        int tries = 0;
+
+        do {
+            float x = rect.position.x + (getRand() - 0.5f) * rect.lengthX;
+            float z = rect.position.z + (getRand() - 0.5f) * rect.lengthZ;
+            position = glm::vec3(x, HEIGHT_OFFSET, z);
+            tries++;
+        } while (!isOnRectPlatform(position, rect) && tries < MAX_TRIES);
+
+        if (tries < MAX_TRIES) {
+            _blueSpheres.push_back(position);
+        } else {
+            fprintf(stderr, "Failed to place blue sphere on a rectangle platform\n");
+        }
+    }
+}
+
 void FPEngine::_drawArch(glm::mat4 viewMtx, glm::mat4 projMtx) const {
     _lightingShaderProgram->useProgram();
 
@@ -1326,21 +1568,47 @@ void FPEngine::_createArchBuffers() {
 
 
 void FPEngine::_initializeCoins() {
-    const int NUM_COINS = 10; // Number of coins to spawn
-    const float innerRadius = 15.0f; // Midway between inner and outer edge
-    const float outerRadius = 17.0f; // Slightly offset for variety
+    const int NUM_COINS_PER_PLATFORM = 10; // Number of coins per platform
+    const float COIN_HEIGHT = 1.0f;
+    const float FLOATING_HEIGHT = 3.0f; // Coins 4 units in the air
 
-    for (int i = 0; i < NUM_COINS; ++i) {
-        float angle = static_cast<float>(i) / NUM_COINS * 2.0f * M_PI; // Spread coins evenly
-        float radius = (i % 2 == 0) ? innerRadius : outerRadius;       // Alternate between two radii
-        float x = radius * cos(angle);
-        float z = radius * sin(angle);
+    _coins.clear(); // Clear any existing coins before regeneration
 
-        glm::vec3 position(x, 1.0f, z); // Coins slightly above the ground
-        _coins.emplace_back(position, 1.0f); // Fixed size
+    // Generate coins for Disk Platforms
+    for (const DiskPlatform& disk : _diskPlatforms) {
+        float minRadius = disk.inner_radius + 1.0f; // Buffer of 1 unit
+        float maxRadius = disk.outer_radius - 1.0f;
+
+        for (int i = 0; i < NUM_COINS_PER_PLATFORM; ++i) {
+            float angle = getRand() * 2.0f * M_PI;
+            float radius = minRadius + getRand() * (maxRadius - minRadius);
+            float x = radius * cos(angle);
+            float z = radius * sin(angle);
+
+            // Randomly decide if the coin will float
+            float y = (getRand() > 0.7f) ? COIN_HEIGHT + FLOATING_HEIGHT : COIN_HEIGHT;
+
+            glm::vec3 position = disk.position + glm::vec3(x, y, z);
+            _coins.emplace_back(position, 1.0f); // Add the coin
+        }
+    }
+
+    // Generate coins for Rectangular Platforms
+    for (const RectPlatform& rect : _rectPlatforms) {
+        float minX = -rect.lengthX / 2.0f + 1.0f; // Buffer of 1 unit
+        float maxX = rect.lengthX / 2.0f - 1.0f;
+        float minZ = -rect.lengthZ / 2.0f + 1.0f;
+        float maxZ = rect.lengthZ / 2.0f - 1.0f;
+
+        for (int i = 0; i < NUM_COINS_PER_PLATFORM; ++i) {
+            float x = getRand() * (maxX - minX) + minX;
+            float z = getRand() * (maxZ - minZ) + minZ;
+
+            glm::vec3 position = rect.position + glm::vec3(x, 1, z);
+            _coins.emplace_back(position, 1.0f); // Add the coin
+        }
     }
 }
-
 
 void FPEngine::_initializeMarbleLocations() {
     // Initialize marbles at the four corners of the platform
@@ -1374,7 +1642,7 @@ void FPEngine::_moveMarbles() {
         glm::vec3 currentDirection = _marbleDirections[i];                    // Current heading of the marble
 
         // Calculate the angular step toward the Hero
-        const float angleStep = 0.05f; // Adjust this value to control turning speed
+        const float angleStep = 0.07f; // Adjust this value to control turning speed
         float dotProduct = glm::dot(currentDirection, toHero); // Cosine of the angle between current heading and target direction
         dotProduct = glm::clamp(dotProduct, -1.0f, 1.0f); // Clamp to avoid numerical issues
         float angleToHero = acos(dotProduct);             // Calculate the angle to the Hero
@@ -1390,7 +1658,7 @@ void FPEngine::_moveMarbles() {
         }
 
         // Move the marble forward along its new heading
-        _marbleLocations[i] += _marbleDirections[i] * MARBLE_SPEED * 0.3f;
+        _marbleLocations[i] += _marbleDirections[i] * MARBLE_SPEED * 0.35f;
 
         // Keep the marbles at the correct height (on the ground)
         _marbleLocations[i].y = Marble::RADIUS;
@@ -1443,4 +1711,63 @@ void FPEngine::generateTorusMesh(std::vector<GLfloat>& vertices, std::vector<GLu
             float y = innerRadius * sinPhi;
             float z = (outerRadius + innerRadius * cosPhi) * sinTheta;
 
-            f
+            float u = (float)ring / numRings;
+            float v = (float)side / numSides;
+
+            vertices.push_back(x);
+            vertices.push_back(y);
+            vertices.push_back(z);
+            vertices.push_back(u);
+            vertices.push_back(v);
+
+            // Indices for the triangle strip
+            if (ring < numRings && side < numSides) {
+                int current = ring * (numSides + 1) + side;
+                int next = (ring + 1) * (numSides + 1) + side;
+
+                indices.push_back(current);
+                indices.push_back(next);
+                indices.push_back(current + 1);
+
+                indices.push_back(current + 1);
+                indices.push_back(next);
+                indices.push_back(next + 1);
+            }
+        }
+    }
+}
+
+
+void FPEngine::_computeAndSendMatrixUniforms(glm::mat4 modelMtx, glm::mat4 viewMtx, glm::mat4 projMtx) const {
+    // Compute the Model-View-Projection matrix
+    glm::mat4 mvpMtx = projMtx * viewMtx * modelMtx;
+
+    // Send MVP matrix to shader
+    glUniformMatrix4fv(_lightingShaderUniformLocations.mvpMatrix, 1, GL_FALSE, glm::value_ptr(mvpMtx));
+
+    // Compute and send the Normal matrix
+    glm::mat3 normalMtx = glm::transpose(glm::inverse(glm::mat3(modelMtx)));
+    glUniformMatrix3fv(_lightingShaderUniformLocations.normalMatrix, 1, GL_FALSE, glm::value_ptr(normalMtx));
+
+    // Send model matrix to shader
+    glUniformMatrix4fv(_lightingShaderUniformLocations.modelMatrix, 1, GL_FALSE, glm::value_ptr(modelMtx));
+}
+
+//*************************************************************************************
+//
+// Callbacks
+
+void mp_engine_keyboard_callback(GLFWwindow *window, int key, int scancode, int action, int mods ) {
+    auto engine = (FPEngine*) glfwGetWindowUserPointer(window);
+    engine->handleKeyEvent(key, action, mods);
+}
+
+void mp_engine_cursor_callback(GLFWwindow *window, double x, double y ) {
+    auto engine = (FPEngine*) glfwGetWindowUserPointer(window);
+    engine->handleCursorPositionEvent(glm::vec2(x, y));
+}
+
+void mp_engine_mouse_button_callback(GLFWwindow *window, int button, int action, int mods ) {
+    auto engine = (FPEngine*) glfwGetWindowUserPointer(window);
+    engine->handleMouseButtonEvent(button, action, mods);
+}
