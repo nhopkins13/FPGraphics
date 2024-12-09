@@ -6,7 +6,7 @@ HOW TO PLAY:
 Try to collect as many coins as possible while avoiding the enemies!
 The blue spheres send the enemies away to their starts so you have more time to collect coins. Save these until they get close!
 Avoid falling off the edges, as this will force you to start from the starting position.
-If you collect all the coins, you win the game, and all enemies are sent to the center of the starting platform. Run some victory laps!
+If you collect all the coins, you win the game, and all enemies are sent to the center of the starting platform- run some victory laps!
 
 SECTION A:
 -movements-
@@ -18,7 +18,7 @@ SPACE: jump
 
 -cameras-
 1: first person camera
-2: arcball camera (SHIFT = zoom out, SHIFT+SPACE = zoom in)
+2: arcball camera ('-' key = zoom out, '=' key = zoom in)
 3: third person camera
 
 SECTION B:
