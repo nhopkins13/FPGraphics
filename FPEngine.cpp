@@ -22,7 +22,9 @@ FPEngine::FPEngine()
         _groundVAO(0),
         _numGroundPoints(0),
         _marbleVBO(0),
-        _marbleVAO(0)
+        _marbleVAO(0),
+        NUM_SPRITES(4),
+        MAX_BOX_SIZE(0.8f)
 {
     for(auto& key : _keys) key = GL_FALSE;
 
@@ -60,6 +62,7 @@ void FPEngine::mSetupTextures() {
     _texHandles[TEXTURE_ID::MARBLE] = _loadAndRegisterTexture("images/marble.png");
     _texHandles[TEXTURE_ID::IRISES] = _loadAndRegisterTexture("images/irises.png");
     _texHandles[TEXTURE_ID::QUARTZ] = _loadAndRegisterTexture("images/quartz.png");
+    _texHandles[TEXTURE_ID::PARTICLE_SYSTEM_TEX] = _loadAndRegisterTexture("images/sparkle.png");
 }
 
 GLuint FPEngine::_loadAndRegisterTexture(const char* FILENAME) {
@@ -386,13 +389,55 @@ void FPEngine::mSetupShaders() {
     _textureShaderUniformLocations.spotLightWidth = _textureShaderProgram->getUniformLocation("spotLightWidth");
     _textureShaderUniformLocations.spotLightColor = _textureShaderProgram->getUniformLocation("spotLightColor");
 
+    _billboardShaderProgram = new CSCI441::ShaderProgram( "shaders/billboardQuadShader.v.glsl",
+                                                          "shaders/billboardQuadShader.g.glsl",
+                                                          "shaders/billboardQuadShader.f.glsl" );
+
+    _billboardShaderProgramUniforms.mvMatrix            = _billboardShaderProgram->getUniformLocation( "mvMatrix");
+    _billboardShaderProgramUniforms.projMatrix          = _billboardShaderProgram->getUniformLocation( "projMatrix");
+    _billboardShaderProgramUniforms.image               = _billboardShaderProgram->getUniformLocation( "image");
+
+    _billboardShaderProgramAttributes.vPos              = _billboardShaderProgram->getAttributeLocation( "vPos");
+
+    // set static uniforms
+    _billboardShaderProgram->setProgramUniform( _billboardShaderProgramUniforms.image, 0 );
 }
 
 void FPEngine::mSetupBuffers() {
     fprintf(stdout, "[DEBUG]: Setting up buffers...\n");
 
+    glGenVertexArrays( NUM_VAOS, _vaos );
+    glGenBuffers( NUM_VAOS, _vbos );
+    glGenBuffers( NUM_VAOS, _ibos );
+
     // Load textures first
     mSetupTextures();
+
+    //***************************************************************************
+    // Particle System generation
+
+    _spriteLocations = (glm::vec3*)malloc(sizeof(glm::vec3) * NUM_SPRITES);
+    _spriteIndices = (GLushort*)malloc(sizeof(GLushort) * NUM_SPRITES);
+    _distances = (GLfloat*)malloc(sizeof(GLfloat) * NUM_SPRITES);
+    _numVAOPoints[VAO_ID::PARTICLE_SYSTEM] = NUM_SPRITES;
+    for( int i = 0; i < NUM_SPRITES; i++ ) {
+        glm::vec3 pos( _randNumber(MAX_BOX_SIZE), _randNumber(MAX_BOX_SIZE), _randNumber(MAX_BOX_SIZE) );
+        _spriteLocations[i] = pos;
+        _spriteIndices[i] = i;
+    }
+
+    glBindVertexArray( _vaos[VAO_ID::PARTICLE_SYSTEM] );
+
+    glBindBuffer( GL_ARRAY_BUFFER, _vbos[VAO_ID::PARTICLE_SYSTEM] );
+    glBufferData( GL_ARRAY_BUFFER, _numVAOPoints[VAO_ID::PARTICLE_SYSTEM] * sizeof(glm::vec3), _spriteLocations, GL_STATIC_DRAW );
+
+    glEnableVertexAttribArray( _billboardShaderProgramAttributes.vPos );
+    glVertexAttribPointer( _billboardShaderProgramAttributes.vPos, 3, GL_FLOAT, GL_FALSE, 0, (void*) 0 );
+
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, _ibos[VAO_ID::PARTICLE_SYSTEM] );
+    glBufferData( GL_ELEMENT_ARRAY_BUFFER, _numVAOPoints[VAO_ID::PARTICLE_SYSTEM] * sizeof(GLushort), _spriteIndices, GL_STATIC_DRAW );
+
+    fprintf( stdout, "[INFO]: point sprites read in with VAO/VBO/IBO %d/%d/%d\n", _vaos[VAO_ID::PARTICLE_SYSTEM], _vbos[VAO_ID::PARTICLE_SYSTEM], _ibos[VAO_ID::PARTICLE_SYSTEM] );
 
     // Connect our 3D Object Library to our shader
     CSCI441::setVertexAttributeLocations(_lightingShaderAttributeLocations.vPos, _lightingShaderAttributeLocations.vNormal);
@@ -742,10 +787,15 @@ void FPEngine::mSetupScene() {
     _isJumping = false;
     _jumpProgress = 0.0f;
 
+    _particleSystemAngle = 0.0f;
 }
 
 
 void FPEngine::_renderScene(glm::mat4 viewMtx, glm::mat4 projMtx) const {
+    if(!_billboardShaderProgram) {
+        return;
+    }
+
     _drawPlatforms(viewMtx, projMtx);
     _drawBlueSpheres(viewMtx, projMtx);
     //for bezier
@@ -932,6 +982,11 @@ void FPEngine::_renderScene(glm::mat4 viewMtx, glm::mat4 projMtx) const {
 }
 
 void FPEngine::_updateScene() {
+    _particleSystemAngle += 0.01f;
+    if(_particleSystemAngle >= 6.28f) {
+        _particleSystemAngle -= 6.28f;
+    }
+
     const glm::vec3 START_POSITION((STARTING_RADIUS_I + STARTING_RADIUS_O) / 2.0f, 0.0f, 0.0f);
     const float BLINKING_DURATION = 3.0f; // Total blinking duration in seconds
     _animationTime += 0.016f;
@@ -976,16 +1031,17 @@ void FPEngine::_updateScene() {
     }
 
     // Handle coin collisions
-    for (auto it = _coins.begin(); it != _coins.end();) {
-        const glm::vec3& coinPosition = it->getPosition();
-        float coinRadius = it->getSize(); // Coin size
+    if (!_coins.empty()) {
+        Coin coin = _coins[0];
+        const glm::vec3 &coinPosition = coin.getPosition();
+        float coinRadius = coin.getSize(); // Coin size
         float distance = glm::length(currentPosition - coinPosition);
 
         if (checkCollision(currentPosition, vehicleRadius, coinPosition, coinRadius)) {
+            fprintf(stdout, "[INFO]: Coin collected! Removing coin at position (%.2f, %.2f, %.2f)\n",
+                    coinPosition.x, coinPosition.y, coinPosition.z);
             _pVehicle->setCoinCount(_pVehicle->getCoinCount() + 1);
-            it = _coins.erase(it);
-        } else {
-            ++it;
+            _coins.erase(_coins.begin());
         }
     }
 
@@ -1232,12 +1288,14 @@ void FPEngine::_renderMinimap() const {
     }
 
     // Render coins as yellow squares
-    for (const Coin& coin : _coins) {
+    if (!_coins.empty()) {
+        Coin coin = _coins[0];
         glm::mat4 coinModelMtx = glm::translate(glm::mat4(1.0f), coin.getPosition());
-        coinModelMtx = glm::scale(coinModelMtx, glm::vec3(5.0f));
+        coinModelMtx = glm::scale(coinModelMtx, glm::vec3(5.0f)); // Size for minimap
         glm::mat4 coinMVP = projMtx * viewMtx * coinModelMtx;
         glUniformMatrix4fv(_lightingShaderUniformLocations.mvpMatrix, 1, GL_FALSE, glm::value_ptr(coinMVP));
-        glUniform3fv(_lightingShaderUniformLocations.materialAmbient, 1, glm::value_ptr(glm::vec3(1.0f, 1.0f, 0.0f)));
+        glUniform3fv(_lightingShaderUniformLocations.materialAmbient, 1,
+                     glm::value_ptr(glm::vec3(1.0f, 1.0f, 0.0f))); // Yellow color
         glUniform3fv(_lightingShaderUniformLocations.materialDiffuse, 1, glm::value_ptr(glm::vec3(1.0f, 1.0f, 0.0f)));
         CSCI441::drawSolidCube(1.0f);
     }
@@ -1250,10 +1308,15 @@ void FPEngine::_renderMinimap() const {
 
 void FPEngine::_drawCoins(glm::mat4 viewMtx, glm::mat4 projMtx) const {
     _lightingShaderProgram->useProgram();
-    for (const Coin& coin : _coins) {
+
+    if (!_coins.empty()) {
+        Coin coin = _coins[0];
         glm::mat4 modelMatrix = glm::translate(glm::mat4(1.0f), coin.getPosition());
-        modelMatrix = glm::rotate(modelMatrix, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f)); // Rotate to align with z-axis
-        modelMatrix = glm::scale(modelMatrix, glm::vec3(coin.getSize(), coin.getSize(), coin.getSize() * 0.4f)); // Thicker coins
+        modelMatrix = glm::rotate(modelMatrix, glm::radians(90.0f),
+                                  glm::vec3(0.0f, 1.0f, 0.0f)); // Rotate to align with z-axis
+
+        modelMatrix = glm::scale(modelMatrix,
+                                 glm::vec3(coin.getSize(), coin.getSize(), coin.getSize() * 0.4f)); // Thicker coins
         glm::mat4 mvpMatrix = projMtx * viewMtx * modelMatrix;
 
         // Send uniforms for MVP and material properties
@@ -1269,18 +1332,62 @@ void FPEngine::_drawCoins(glm::mat4 viewMtx, glm::mat4 projMtx) const {
         glUniform3fv(_lightingShaderUniformLocations.materialSpecular, 1, glm::value_ptr(glm::vec3(0.8f)));
         glUniform1f(_lightingShaderUniformLocations.materialShininess, 64.0f);
 
-        // Draw the main body of the coin (thicker cylinder)
-        CSCI441::drawSolidCylinder(0.5f, 0.5f, 0.4f, 32, 32); // Increased height to 0.4
-
-        // Top cap
-        glm::mat4 topCapMatrix = glm::translate(modelMatrix, glm::vec3(0.0f, 0.0f, 0.2f)); // Adjust position for top cap
-        glUniformMatrix4fv(_lightingShaderUniformLocations.modelMatrix, 1, GL_FALSE, glm::value_ptr(topCapMatrix));
+        glUniformMatrix4fv(_lightingShaderUniformLocations.modelMatrix, 1, GL_FALSE, glm::value_ptr(modelMatrix));
         CSCI441::drawSolidDisk(0.0f, 0.5f, 32, 1);
 
-        // Bottom cap
-        glm::mat4 bottomCapMatrix = glm::translate(modelMatrix, glm::vec3(0.0f, 0.0f, -0.2f)); // Adjust position for bottom cap
-        glUniformMatrix4fv(_lightingShaderUniformLocations.modelMatrix, 1, GL_FALSE, glm::value_ptr(bottomCapMatrix));
-        CSCI441::drawSolidDisk(0.0f, 0.5f, 32, 1);
+        //***************************************************************************
+        // Draw Particle System
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDisable(GL_DEPTH_TEST);
+
+        _billboardShaderProgram->useProgram();
+        glm::mat4 partModelMatrix = glm::rotate(modelMatrix, _particleSystemAngle, CSCI441::Y_AXIS);
+        glm::mat4 mvMatrix = viewMtx * partModelMatrix;
+        _billboardShaderProgram->setProgramUniform(_billboardShaderProgramUniforms.mvMatrix, mvMatrix);
+        _billboardShaderProgram->setProgramUniform(_billboardShaderProgramUniforms.projMatrix, projMtx);
+
+        glBindVertexArray(_vaos[VAO_ID::PARTICLE_SYSTEM]);
+        glBindTexture(GL_TEXTURE_2D, _texHandles[TEXTURE_ID::PARTICLE_SYSTEM_TEX]);
+
+        // compute distances
+        glm::mat4 viewMatrix = _pArcballCam->getViewMatrix();
+        glm::vec3 forward(viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2]);
+        glm::vec3 camPosition = _pArcballCam->getPosition();
+        glm::vec3 lookAtPoint = camPosition + forward;
+
+        glm::vec3 v = lookAtPoint - _pArcballCam->getPosition();
+        for (int i = 0; i < NUM_SPRITES; i++) {
+            glm::vec3 currentSprite = _spriteLocations[_spriteIndices[i]];
+            glm::vec3 p = glm::vec4(currentSprite, 1) * partModelMatrix;
+            glm::vec3 ep = p - _pArcballCam->getPosition();
+            float vp = dot(v, ep);
+
+            _distances[i] = vp;
+        }
+
+        // sort indices by distance
+        for (int i = 0; i < NUM_SPRITES; i++) {
+            for (int j = 0; j < NUM_SPRITES; j++) {
+                if (_distances[i] < _distances[j]) {
+                    GLushort swapInd = _spriteIndices[i];
+                    _spriteIndices[i] = _spriteIndices[j];
+                    _spriteIndices[j] = swapInd;
+
+                    GLfloat swapDist = _distances[i];
+                    _distances[i] = _distances[j];
+                    _distances[j] = swapDist;
+                }
+            }
+        }
+
+        // update IBO
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _ibos[VAO_ID::PARTICLE_SYSTEM]);
+        glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, sizeof(GLushort) * NUM_SPRITES, _spriteIndices);
+
+        glDrawElements(GL_POINTS, _numVAOPoints[VAO_ID::PARTICLE_SYSTEM], GL_UNSIGNED_SHORT, (void *) 0);
+
+        glEnable(GL_DEPTH_TEST);
     }
 }
 
@@ -1767,6 +1874,10 @@ void FPEngine::_computeAndSendMatrixUniforms(glm::mat4 modelMtx, glm::mat4 viewM
 
     // Send model matrix to shader
     glUniformMatrix4fv(_lightingShaderUniformLocations.modelMatrix, 1, GL_FALSE, glm::value_ptr(modelMtx));
+}
+
+GLfloat FPEngine::_randNumber( const GLfloat MAX ) {
+    return rand() / (GLfloat)RAND_MAX * MAX * 2.0 - MAX;
 }
 
 //*************************************************************************************

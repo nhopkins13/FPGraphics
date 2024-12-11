@@ -184,6 +184,35 @@ private:
     GLuint _archVAO;
     GLsizei _numArchPoints;
 
+    // Coins
+    GLuint _coinVAO;
+    GLsizei _numCoinPoints;
+
+    // Particles
+    static constexpr GLuint NUM_VAOS = 1;
+    enum VAO_ID {
+        /// \desc the particle system
+        PARTICLE_SYSTEM = 0
+    };
+    GLuint _vaos[NUM_VAOS];
+    GLuint _vbos[NUM_VAOS];
+    GLuint _ibos[NUM_VAOS];
+    GLsizei _numVAOPoints[NUM_VAOS];
+
+    /// \desc our sprites exist within a box of this size
+    const GLfloat MAX_BOX_SIZE;
+    /// \desc the number of sprites to draw and the size of the _spriteLocations,
+    /// \desc _spriteIndices, and _distances arrays
+    const GLuint NUM_SPRITES;
+    /// \desc the (x,y,z) location of each sprite
+    glm::vec3* _spriteLocations = nullptr;
+    /// \desc the order to draw the sprites in
+    GLushort* _spriteIndices = nullptr;
+    /// \desc will be used to store the distance to the camera
+    GLfloat* _distances = nullptr;
+    /// \desc angle to rotate the particle system by
+    GLfloat _particleSystemAngle;
+
     //***************************************************************************
     // Shader Program Information
 
@@ -192,7 +221,7 @@ private:
 
     void mSetupTextures();
     /// \desc total number of textures in our scene
-    static constexpr GLuint NUM_TEXTURES = 5;
+    static constexpr GLuint NUM_TEXTURES = 6;
     /// \desc used to index through our texture array to give named access
     enum TEXTURE_ID {
         /// \desc metal texture
@@ -201,9 +230,27 @@ private:
         RAINBOW = 2,
         IRISES = 3,
         QUARTZ = 4,
+        PARTICLE_SYSTEM_TEX = 5
     };
     /// \desc texture handles for our textures
     GLuint _texHandles[NUM_TEXTURES];
+
+    CSCI441::ShaderProgram* _billboardShaderProgram = nullptr;
+    /// \desc stores the locations of all of our shader uniforms
+    struct BillboardShaderProgramUniforms {
+        /// \desc the ModelView Matrix to apply
+        GLint mvMatrix;
+        /// \desc the Projection Matrix to apply
+        GLint projMatrix;
+        /// \desc the texture to apply
+        GLint image;
+    } _billboardShaderProgramUniforms;
+    /// \desc stores the locations of all of our shader attributes
+    struct BillboardShaderProgramAttributes {
+        /// \desc the vertex position
+        GLint vPos;
+    } _billboardShaderProgramAttributes;
+
     /// \desc shader program that performs texturing
     CSCI441::ShaderProgram* _textureShaderProgram;
     /// \desc stores the locations of all of our shader uniforms
@@ -295,6 +342,7 @@ private:
     void _generateRectangle(RectPlatform& rect);
     void _generateDisk(DiskPlatform& disk, int numSegments);
 
+    static GLfloat _randNumber( GLfloat MAX );
 
     void _drawArch(glm::mat4 viewMtx, glm::mat4 projMtx) const;
     void _createArchBuffers();
