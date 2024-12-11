@@ -35,10 +35,9 @@ Point light: we have lamp posts located around the track
 SECTION E:
 We have our regular lighting shader implemented, as well as a texture shader, each in a unique way.
 
-SECTION X: gray maybe change this idk. make us fall out of sky or somethuing cool
-In the center of the starting platform, you will notice a bunch of trees enclosing the middle of the disk shape.
-Normally, collision detection prevents one from entering this center. However, if you keep colliding with the trees for
-6 seconds straight, then you will be able to pass through and collect even more coins.
+SECTION X:
+In the center of the starting platform, you will notice a bunch of trees enclosing the middle of the disk shape and coins floating
+in dead space. Using the jump mechanic you can jump onto an invisible platform and collect the coins.
 
 To compile, click build and run.
 

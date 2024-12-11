@@ -442,6 +442,16 @@ void FPEngine::_initializePlatforms() {
     _generateDisk(disk1, numSegments);
     _diskPlatforms.push_back(disk1);
 
+    RectPlatform invisiblePlatform;
+    invisiblePlatform.position = glm::vec3(0.0f, 0.0f, 0.0f); // Centered on disk1
+    invisiblePlatform.lengthX = 5.0f;  // Arbitrary size
+    invisiblePlatform.lengthZ = 5.0f;
+    invisiblePlatform.buffer = 2;
+    invisiblePlatform.fallBuffer = 1.0; // Adjust as needed for interaction
+    invisiblePlatform.textureID = 0;    // No texture or set to an invisible texture
+    _generateRectangle(invisiblePlatform);
+    _rectPlatforms.push_back(invisiblePlatform);
+
     // --- Disk 2 (20 units apart + radii) ---
     DiskPlatform disk2;
     disk2.position = glm::vec3(diskSeparation, 0.0f, 0.0f); // Proper separation
